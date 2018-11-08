@@ -17,6 +17,8 @@ yarn add app-info-parser
 
 ## Getting started
 
+### Use in Node
+
 ``` javascript
 const AppInfoParser = require('app-info-parser')
 const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa
@@ -26,6 +28,30 @@ parser.parse().then(result => {
 }).catch(err => {
   console.log('err ----> ', err)
 })
+```
+
+### Use in Browser
+
+#### html
+
+``` html
+<input type="file" name="file" id="file" onchange="fileSelect()">
+```
+
+#### js
+
+``` javascript
+const AppInfoParser = require('app-info-parser')
+function fileSelect () {
+  const files = document.getElementById('file').files
+  const parser = new AppInfoParser(files[0])
+  parser.parse().then(result => {
+    console.log('app info ----> ', result)
+    console.log('file buffer ----> ', parser.file)
+  }).catch(err => {
+    console.log('err ----> ', err)
+  })
+}
 ```
 
 ## Q & A
