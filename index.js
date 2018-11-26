@@ -1,1 +1,1 @@
-module.exports = require('./lib/app-info')
+module.exports = require('./dist/index')
