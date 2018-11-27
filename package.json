@@ -1,11 +1,13 @@
 {
   "name": "app-info-parser",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Exact info from apk or ipa file.",
-  "main": "index.js",
+  "main": "./lib/index.js",
   "scripts": {
-    "dev": "webpack --mode development ./lib/app-info.js --output ./dist/index.js",
-    "build": "webpack --mode production ./lib/app-info.js --output ./dist/index.js"
+    "test": "node ./example/node.js",
+    "dev": "webpack --mode development ./lib/index.js --output ./dist/index.js",
+    "build": "./node_modules/.bin/babel ./lib -d ./build",
+    "build:browser": "webpack --mode production ./lib/browser.js --output ./dist/browser.js"
   },
   "keywords": [
     "ipa",
@@ -24,8 +26,9 @@
     "plist": "^3.0.1",
     "typedarray-to-buffer": "^3.0.4"
   },
-  "browser": "browser.js",
+  "browser": "./dist/browser.js",
   "devDependencies": {
+    "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.5",
     "babel-preset-env": "^1.7.0",

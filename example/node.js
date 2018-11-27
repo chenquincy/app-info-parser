@@ -1,5 +1,5 @@
-const AppInfoParser = require('../')
-const parser = new AppInfoParser('../packages/test.apk')
+const AppInfoParser = require('../build/index.js')
+const parser = new AppInfoParser('../packages/test.ipa')
 parser.parse().then(result => {
   console.log(' ----> ', result)
 }).catch(e => {

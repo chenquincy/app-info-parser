@@ -1,13 +1,10 @@
-const assert = require('assert')
-
 module.exports = {
-  assert: function (condition, msg) {
-    assert(condition, `[app-info-parser] ${msg}`)
-  },
   findEntry: function (entries, regex) {
     let result
     entries.forEach(function (path, entry) {
+      console.log(' ----> ', entry.name)
       if (regex.test(entry.name)) {
+        console.log(' ----> ', entry)
         result = entry
       }
     })
