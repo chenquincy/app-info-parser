@@ -42,11 +42,11 @@ var IpaParser = function () {
             if (buffer[0] === 60) {
               result = plistParser(buffer.toString());
             } else if (buffer[0] === 98) {
-              result = bplistParser(buffer);
+              result = bplistParser(buffer)[0];
             } else {
               reject(new Error('Unknow buffer type'));
             }
-            resolve(result[0]);
+            resolve(result);
           });
         });
       });
