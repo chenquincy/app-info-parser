@@ -2,10 +2,14 @@
 
 **app-info-parser** is writed for extracting information from APK and IPA file, which allows you to read the `AndroidManifest.xml` file in `xxx.apk` file or `Info.plist` in `xxx.ipa` file.
 
+
+
 ## Support
 
 * Node
 * Browser
+
+
 
 ## Installation
 
@@ -15,9 +19,13 @@ npm install app-info-parser
 yarn add app-info-parser
 ```
 
+
+
 ## Getting started
 
-### Use in Node
+
+
+### NPM Use
 
 ``` javascript
 const AppInfoParser = require('app-info-parser')
@@ -30,18 +38,12 @@ parser.parse().then(result => {
 })
 ```
 
-### Use in Browser
-
-#### html
+### Basic usage
 
 ``` html
 <input type="file" name="file" id="file" onchange="fileSelect()">
-```
-
-#### js
-
-``` javascript
-const AppInfoParser = require('app-info-parser')
+<script src="/dist/app-info-parser.js"></script>
+<script>
 function fileSelect () {
   const files = document.getElementById('file').files
   const parser = new AppInfoParser(files[0])
@@ -52,16 +54,6 @@ function fileSelect () {
     console.log('err ----> ', err)
   })
 }
-```
-
-## Q & A
-
-* Error in webpack:  `* fs in ../app-info-parser/~/bplist-parser/bplistParser.js To install it, you can run: npm install --save fs`
-
-``` javascript
-// Add this option to build/webpack.base.conf.js
-node: {
-    fs: 'empty'
-}
+</script>
 ```
 

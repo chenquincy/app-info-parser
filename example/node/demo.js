@@ -1,4 +1,4 @@
-const AppInfoParser = require('../build/index.js')
+const AppInfoParser = require('../src/index.js')
 const parser = new AppInfoParser('../packages/test.ipa')
 parser.parse().then(result => {
   console.log(' ----> ', result)

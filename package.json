@@ -1,13 +1,17 @@
 {
   "name": "app-info-parser",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Exact info from apk or ipa file.",
-  "main": "./lib/index.js",
+  "main": "./src/index.js",
+  "browser": {
+    "./lib/index.js": "./lib/browser.js",
+    "./src/index.js": "./src/browser.js"
+  },
   "scripts": {
     "test": "node ./example/node.js",
-    "dev": "webpack --mode development ./lib/index.js --output ./dist/index.js",
-    "build": "./node_modules/.bin/babel ./lib -d ./build",
-    "build:browser": "webpack --mode production ./lib/browser.js --output ./dist/browser.js"
+    "build": "rimraf src && babel lib -d src",
+    "build:browser": "rimraf dist/* && browserify lib/browser.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
+    "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\""
   },
   "keywords": [
     "ipa",
@@ -26,19 +30,22 @@
     "plist": "^3.0.1",
     "typedarray-to-buffer": "^3.0.4"
   },
-  "browser": "./dist/browser.js",
   "devDependencies": {
     "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.5",
-    "babel-preset-env": "^1.7.0",
+    "babel-preset-es2015": "^6.24.1",
+    "babelify": "^7.3.0",
+    "browserify": "^16.2.3",
+    "derequire": "^2.0.6",
     "eslint": "^5.8.0",
     "eslint-config-standard": "^12.0.0",
     "eslint-plugin-import": "^2.14.0",
     "eslint-plugin-node": "^8.0.0",
     "eslint-plugin-promise": "^4.0.1",
     "eslint-plugin-standard": "^4.0.0",
-    "webpack": "^4.26.1",
-    "webpack-cli": "^3.1.2"
+    "exorcist": "^1.0.1",
+    "rimraf": "^2.6.2",
+    "uglify-es": "^3.3.9"
   }
 }
