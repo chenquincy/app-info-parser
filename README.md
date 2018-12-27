@@ -1,8 +1,10 @@
 ## app-info-parser
 
-**app-info-parser** is writed for extracting information from APK and IPA file, which allows you to read the `AndroidManifest.xml` file in `xxx.apk` file or `Info.plist` in `xxx.ipa` file.
+[app-info-parser](https://github.com/chenquincy/app-info-parser) is writed for extracting information from APK and IPA file, which allows you to read the `AndroidManifest.xml` file in `.apk` file or `Info.plist` in `.ipa` file.
 
-code repo: [https://github.com/chenquincy/app-info-parser](https://github.com/chenquincy/app-info-parser)
+![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
+
+
 
 ## Support
 
