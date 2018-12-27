@@ -3,6 +3,10 @@
 .eslintrc.js
 .gitignore
 
-lib
+packages/
+example/
+node_modules/
+dist/
+lib/
 
 package-lock.json
