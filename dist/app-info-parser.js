@@ -1,83 +1,122 @@
-(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.AppInfoParser = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(_dereq_,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.AppInfoParser = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Zip = _dereq_('jszip');
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
-var _require = _dereq_('./utils'),
-    findEntry = _require.findEntry;
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var regex = /^AndroidManifest\.xml$/;
-var ManifestXmlParser = _dereq_('./xml-parser/manifest');
+var Zip = require('./zip');
 
-var ApkParser = function () {
+var _require = require('./utils'),
+    mapInfoResource = _require.mapInfoResource,
+    findApkInfoIcon = _require.findApkInfoIcon,
+    getBase64FromBuffer = _require.getBase64FromBuffer;
+
+var ManifestName = /^androidmanifest\.xml$/;
+var ResourceName = /^resources\.arsc$/;
+
+var ManifestXmlParser = require('./xml-parser/manifest');
+var ResourceFinder = require('./resource-finder');
+
+var ApkParser = function (_Zip) {
+  _inherits(ApkParser, _Zip);
+
   function ApkParser(file) {
     _classCallCheck(this, ApkParser);
 
-    if (!file) {
-      throw new Error('Param miss: filePath');
-    }
+    var _this = _possibleConstructorReturn(this, (ApkParser.__proto__ || Object.getPrototypeOf(ApkParser)).call(this, file));
 
-    this.file = file;
+    if (!(_this instanceof ApkParser)) {
+      var _ret;
+
+      return _ret = new ApkParser(file), _possibleConstructorReturn(_this, _ret);
+    }
+    return _this;
   }
 
   _createClass(ApkParser, [{
     key: 'parse',
-    value: function parse() {
-      var file = this.file;
-      return new Promise(function (resolve, reject) {
-        var zip = new Zip();
-        zip.loadAsync(file).then(function (entries) {
-          var entry = findEntry(entries, regex);
-          if (!entry) {
-            reject(new Error('AndroidManifest.xml not found'));
-          }
-          entries.file(entry.name).async('nodebuffer').then(function (binaryString) {
-            var buffer = new ManifestXmlParser(binaryString);
-            var result = buffer.parse();
-            resolve(result);
-          });
+    value: async function parse() {
+      var buffers = await this.getEntries([ManifestName, ResourceName]);
+      // 解析 manifest
+      var apkInfo = this._parseManifest(buffers[ManifestName]);
+      // 解析 resourcemap
+      var resourceMap = this._parseresourceMap(buffers[ResourceName]);
+      // 结合resourcemap再次解析apkInfo
+      apkInfo = mapInfoResource(apkInfo, resourceMap);
+      // 获取icon base64值
+      var iconBuffer = await this.getEntry(findApkInfoIcon(apkInfo));
+      apkInfo.icon = getBase64FromBuffer(iconBuffer);
+
+      return apkInfo;
+    }
+  }, {
+    key: '_parseManifest',
+    value: function _parseManifest(buffer) {
+      try {
+        var parser = new ManifestXmlParser(buffer, {
+          ignore: ['application.activity', 'application.service', 'application.receiver', 'application.provider', 'permission-group']
         });
-      });
+        return parser.parse();
+      } catch (e) {
+        throw new Error('Parse AndroidManifest.xml error: ', e);
+      }
+    }
+  }, {
+    key: '_parseresourceMap',
+    value: function _parseresourceMap(buffer) {
+      try {
+        return new ResourceFinder().processResourceTable(buffer);
+      } catch (e) {
+        throw new Error('Parser resources.arsc error: ' + e);
+      }
     }
   }]);
 
   return ApkParser;
-}();
+}(Zip);
 
 module.exports = ApkParser;
 
-},{"./utils":4,"./xml-parser/manifest":6,"jszip":52}],2:[function(_dereq_,module,exports){
+},{"./resource-finder":4,"./utils":5,"./xml-parser/manifest":7,"./zip":8}],2:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var ApkParser = _dereq_('./apk');
-var IpaParser = _dereq_('./ipa');
+var ApkParser = require('./apk');
+var IpaParser = require('./ipa');
 var supportFileTypes = ['ipa', 'apk'];
 
 var AppInfoParser = function () {
+  /**
+   *
+   * @param {String | File | Blob} file // node：file path，browser: file or blob
+   */
   function AppInfoParser(file) {
     _classCallCheck(this, AppInfoParser);
 
-    var splits = file.name.split('.');
+    if (!file) {
+      throw new Error('Param miss: file.');
+    }
+    var splits = (file.name || file).split('.');
     var fileType = splits[splits.length - 1];
     if (!supportFileTypes.includes(fileType)) {
-      throw new Error('Unsupport file type!');
+      throw new Error('Unsupport file type, only support .ipa or .apk file.');
     }
     this.file = file;
 
     switch (fileType) {
       case 'ipa':
-        this.parser = new IpaParser(file);
+        this.parser = new IpaParser(this.file);
         break;
       case 'apk':
-        this.parser = new ApkParser(file);
+        this.parser = new ApkParser(this.file);
         break;
     }
   }
@@ -94,83 +133,784 @@ var AppInfoParser = function () {
 
 module.exports = AppInfoParser;
 
-},{"./apk":1,"./ipa":3}],3:[function(_dereq_,module,exports){
+},{"./apk":1,"./ipa":3}],3:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var Zip = _dereq_('jszip');
-var parseToBuffer = _dereq_('typedarray-to-buffer');
-var bplistParser = _dereq_('bplist-parser').parseBuffer;
-var plistParser = _dereq_('plist').parse;
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
 
-var _require = _dereq_('./utils'),
-    findEntry = _require.findEntry;
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var regex = /^Payload\/(.+)\.app\/Info.plist$/;
+var Zip = require('./zip');
+var parsePlist = require('plist').parse;
+var parseBplist = require('bplist-parser').parseBuffer;
+var cgbiToPng = require('cgbi-to-png');
 
-var IpaParser = function () {
+var _require = require('./utils'),
+    findIpaInfoIcon = _require.findIpaInfoIcon,
+    getBase64FromBuffer = _require.getBase64FromBuffer;
+
+var PlistName = new RegExp('payload/.+?.app/info.plist$', 'i');
+var ProvisionName = /payload\/.+?\.app\/embedded.mobileprovision/;
+
+var IpaParser = function (_Zip) {
+  _inherits(IpaParser, _Zip);
+
   function IpaParser(file) {
     _classCallCheck(this, IpaParser);
 
-    if (!file) {
-      throw new Error('Param miss: filePath');
-    }
+    var _this = _possibleConstructorReturn(this, (IpaParser.__proto__ || Object.getPrototypeOf(IpaParser)).call(this, file));
 
-    this.file = file;
+    if (!(_this instanceof IpaParser)) {
+      var _ret;
+
+      return _ret = new IpaParser(file), _possibleConstructorReturn(_this, _ret);
+    }
+    return _this;
   }
 
   _createClass(IpaParser, [{
     key: 'parse',
-    value: function parse() {
-      var file = this.file;
-      return new Promise(function (resolve, reject) {
-        var zip = new Zip();
-        zip.loadAsync(file).then(function (entries) {
-          var entry = findEntry(entries, regex);
-          if (!entry) {
-            reject(new Error('Info.plist not found'));
-          }
-          entries.file(entry.name).async('arraybuffer').then(function (aBuffer) {
-            var buffer = parseToBuffer(aBuffer);
-            var result = void 0;
-            if (buffer[0] === 60) {
-              result = plistParser(buffer.toString());
-            } else if (buffer[0] === 98) {
-              result = bplistParser(buffer)[0];
-            } else {
-              reject(new Error('Unknow buffer type'));
-            }
-            resolve(result);
-          });
-        });
-      });
+    value: async function parse() {
+      var buffers = await this.getEntries([PlistName, ProvisionName]);
+      // 解析 plist
+      var plistInfo = this._parsePlist(buffers[PlistName]);
+      // 解析 mobileprovision
+      // const provisionInfo = this._parseProvision(buffers[ProvisionName])
+      // plistInfo.mobileProvision = provisionInfo
+
+      // 解析 ipa安装包图标
+      var iconRegex = new RegExp(findIpaInfoIcon(plistInfo).toLowerCase());
+      var iconBuffer = await this.getEntry(iconRegex);
+      // ipa安装包的图标被特殊处理过，需要经过转换
+      plistInfo.icon = getBase64FromBuffer(cgbiToPng.revert(iconBuffer));
+
+      return plistInfo;
+    }
+    /**
+     * 解析plist文件
+     * @param {Buffer} buffer // 要解析的plist文件buffer
+     */
+
+  }, {
+    key: '_parsePlist',
+    value: function _parsePlist(buffer) {
+      var result = void 0;
+      var bufferType = buffer[0];
+      if (bufferType === 60 || bufferType === '<' || bufferType === 239) {
+        result = parsePlist(buffer.toString());
+      } else if (bufferType === 98) {
+        result = parseBplist(buffer)[0];
+      } else {
+        console.error('Unknow plist buffer type.');
+        result = {};
+      }
+      return result;
+    }
+    /**
+     * 解析provision文件
+     * @param {Buffer} buffer // 要解析的plist文件buffer
+     */
+
+  }, {
+    key: '_parseProvision',
+    value: function _parseProvision(buffer) {
+      var info = {};
+      if (buffer) {
+        info = buffer.toString('utf-8');
+        var firstIndex = info.indexOf('<');
+        var endIndex = info.indexOf('</plist>');
+        info = info.slice(firstIndex, endIndex + 8);
+        info = parsePlist(info);
+      }
+      return info;
     }
   }]);
 
   return IpaParser;
-}();
+}(Zip);
 
 module.exports = IpaParser;
 
-},{"./utils":4,"bplist-parser":9,"jszip":52,"plist":95,"typedarray-to-buffer":112}],4:[function(_dereq_,module,exports){
+},{"./utils":5,"./zip":8,"bplist-parser":12,"cgbi-to-png":22,"plist":71}],4:[function(require,module,exports){
 "use strict";
 
-module.exports = {
-  findEntry: function findEntry(entries, regex) {
-    var result = void 0;
-    entries.forEach(function (path, entry) {
-      if (regex.test(entry.name)) {
-        result = entry;
+/**
+ * Code translated from a C# project https://github.com/hylander0/Iteedee.ApkReader/blob/master/Iteedee.ApkReader/ApkResourceFinder.cs
+ *
+ * Decode binary file `resources.arsc` from a .apk file to a JavaScript Object.
+ */
+
+var ByteBuffer = require("bytebuffer");
+
+var DEBUG = false;
+
+var RES_STRING_POOL_TYPE = 0x0001;
+var RES_TABLE_TYPE = 0x0002;
+var RES_TABLE_PACKAGE_TYPE = 0x0200;
+var RES_TABLE_TYPE_TYPE = 0x0201;
+var RES_TABLE_TYPE_SPEC_TYPE = 0x0202;
+
+// // Contains no data.
+// var TYPE_NULL = 0x00;
+// // The 'data' holds an attribute resource identifier.
+// var TYPE_ATTRIBUTE = 0x02;
+// // The 'data' holds a single-precision floating point number.
+// var TYPE_FLOAT = 0x04;
+// // The 'data' holds a complex number encoding a dimension value,
+// // such as "100in".
+// var TYPE_DIMENSION = 0x05;
+// // The 'data' holds a complex number encoding a fraction of a
+// // container.
+// var TYPE_FRACTION = 0x06;
+// // The 'data' is a raw integer value of the form n..n.
+// var TYPE_INT_DEC = 0x10;
+// // The 'data' is a raw integer value of the form 0xn..n.
+// var TYPE_INT_HEX = 0x11;
+// // The 'data' is either 0 or 1, for input "false" or "true" respectively.
+// var TYPE_INT_BOOLEAN = 0x12;
+// // The 'data' is a raw integer value of the form #aarrggbb.
+// var TYPE_INT_COLOR_ARGB8 = 0x1c;
+// // The 'data' is a raw integer value of the form #rrggbb.
+// var TYPE_INT_COLOR_RGB8 = 0x1d;
+// // The 'data' is a raw integer value of the form #argb.
+// var TYPE_INT_COLOR_ARGB4 = 0x1e;
+// // The 'data' is a raw integer value of the form #rgb.
+// var TYPE_INT_COLOR_RGB4 = 0x1f;
+
+// The 'data' holds a ResTable_ref, a reference to another resource
+// table entry.
+var TYPE_REFERENCE = 0x01;
+// The 'data' holds an index into the containing resource table's
+// global value string pool.
+var TYPE_STRING = 0x03;
+
+function ResourceFinder() {
+  this.valueStringPool = null;
+  this.typeStringPool = null;
+  this.keyStringPool = null;
+
+  this.package_id = 0;
+
+  this.responseMap = {};
+  this.entryMap = {};
+}
+
+/**
+ * Same to C# BinaryReader.readBytes
+ *
+ * @param bb ByteBuffer
+ * @param len 长度
+ * @returns {Buffer}
+ */
+ResourceFinder.readBytes = function (bb, len) {
+  var uint8Array = new Uint8Array(len);
+  for (var i = 0; i < len; i++) {
+    uint8Array[i] = bb.readUint8();
+  }
+
+  return ByteBuffer.wrap(uint8Array, "binary", true);
+};
+
+//
+/**
+ *
+ * @param {ByteBuffer} bb
+ * @return {Map<String, Set<String>>}
+ */
+ResourceFinder.prototype.processResourceTable = function (resourceBuffer) {
+  var bb = ByteBuffer.wrap(resourceBuffer, "binary", true);
+
+  // Resource table structure
+  var type = bb.readShort(),
+      headerSize = bb.readShort(),
+      size = bb.readInt(),
+      packageCount = bb.readInt(),
+      buffer,
+      bb2;
+
+  if (type != RES_TABLE_TYPE) {
+    throw new Error("No RES_TABLE_TYPE found!");
+  }
+  if (size != bb.limit) {
+    throw new Error("The buffer size not matches to the resource table size.");
+  }
+
+  var realStringPoolCount = 0,
+      realPackageCount = 0;
+
+  while (true) {
+    var pos, t, hs, s;
+    try {
+      pos = bb.offset;
+      t = bb.readShort();
+      hs = bb.readShort();
+      s = bb.readInt();
+    } catch (e) {
+      break;
+    }
+
+    if (t == RES_STRING_POOL_TYPE) {
+      // Process the string pool
+      if (realStringPoolCount == 0) {
+        // Only the first string pool is processed.
+        if (DEBUG) {
+          console.log("Processing the string pool ...");
+        }
+
+        buffer = new ByteBuffer(s);
+        bb.offset = pos;
+        bb.prependTo(buffer);
+
+        bb2 = ByteBuffer.wrap(buffer, "binary", true);
+
+        bb2.LE();
+        this.valueStringPool = this.processStringPool(bb2);
       }
-    });
-    return result;
+
+      realStringPoolCount++;
+    } else if (t == RES_TABLE_PACKAGE_TYPE) {
+      // Process the package
+      if (DEBUG) {
+        console.log("Processing the package " + realPackageCount + " ...");
+      }
+
+      buffer = new ByteBuffer(s);
+      bb.offset = pos;
+      bb.prependTo(buffer);
+
+      bb2 = ByteBuffer.wrap(buffer, "binary", true);
+      bb2.LE();
+      this.processPackage(bb2);
+
+      realPackageCount++;
+    } else {
+      console.error("Unsupported type");
+    }
+
+    bb.offset = pos + s;
+
+    if (!bb.remaining()) break;
+  }
+
+  if (realStringPoolCount != 1) {
+    throw new Error("More than 1 string pool found!");
+  }
+  if (realPackageCount != packageCount) {
+    throw new Error("Real package count not equals the declared count.");
+  }
+
+  return this.responseMap;
+};
+
+/**
+ *
+ * @param {ByteBuffer} bb
+ */
+ResourceFinder.prototype.processPackage = function (bb) {
+  // Package structure
+  var type = bb.readShort(),
+      headerSize = bb.readShort(),
+      size = bb.readInt(),
+      id = bb.readInt();
+
+  this.package_id = id;
+
+  for (var i = 0; i < 256; ++i) {
+    bb.readUint8();
+  }
+
+  var typeStrings = bb.readInt(),
+      lastPublicType = bb.readInt(),
+      keyStrings = bb.readInt(),
+      lastPublicKey = bb.readInt();
+
+  if (typeStrings != headerSize) {
+    throw new Error("TypeStrings must immediately following the package structure header.");
+  }
+
+  if (DEBUG) {
+    console.log("Type strings:");
+  }
+
+  var lastPosition = bb.offset;
+  bb.offset = typeStrings;
+  var bbTypeStrings = ResourceFinder.readBytes(bb, bb.limit - bb.offset);
+  bb.offset = lastPosition;
+  this.typeStringPool = this.processStringPool(bbTypeStrings);
+
+  // Key strings
+  if (DEBUG) {
+    console.log("Key strings:");
+  }
+
+  bb.offset = keyStrings;
+  var key_type = bb.readShort(),
+      key_headerSize = bb.readShort(),
+      key_size = bb.readInt();
+
+  lastPosition = bb.offset;
+  bb.offset = keyStrings;
+  var bbKeyStrings = ResourceFinder.readBytes(bb, bb.limit - bb.offset);
+  bb.offset = lastPosition;
+  this.keyStringPool = this.processStringPool(bbKeyStrings);
+
+  // Iterate through all chunks
+  var typeSpecCount = 0;
+  var typeCount = 0;
+
+  bb.offset = keyStrings + key_size;
+
+  var bb2;
+
+  while (true) {
+    var pos = bb.offset;
+    try {
+      var t = bb.readShort();
+      var hs = bb.readShort();
+      var s = bb.readInt();
+    } catch (e) {
+      break;
+    }
+
+    if (t == RES_TABLE_TYPE_SPEC_TYPE) {
+      bb.offset = pos;
+      bb2 = ResourceFinder.readBytes(bb, s);
+      this.processTypeSpec(bb2);
+
+      typeSpecCount++;
+    } else if (t == RES_TABLE_TYPE_TYPE) {
+      bb.offset = pos;
+      bb2 = ResourceFinder.readBytes(bb, s);
+      this.processType(bb2);
+
+      typeCount++;
+    }
+
+    if (s == 0) {
+      break;
+    }
+
+    bb.offset = pos + s;
+
+    if (!bb.remaining()) {
+      break;
+    }
   }
 };
 
-},{}],5:[function(_dereq_,module,exports){
+/**
+ *
+ * @param {ByteBuffer} bb
+ */
+ResourceFinder.prototype.processType = function (bb) {
+  var type = bb.readShort(),
+      headerSize = bb.readShort(),
+      size = bb.readInt(),
+      id = bb.readByte(),
+      res0 = bb.readByte(),
+      res1 = bb.readShort(),
+      entryCount = bb.readInt(),
+      entriesStart = bb.readInt();
+
+  var refKeys = {};
+
+  var config_size = bb.readInt();
+
+  // Skip the config data
+  bb.offset = headerSize;
+
+  if (headerSize + entryCount * 4 != entriesStart) {
+    throw new Error("HeaderSize, entryCount and entriesStart are not valid.");
+  }
+
+  // Start to get entry indices
+  var entryIndices = new Array(entryCount);
+  for (var i = 0; i < entryCount; ++i) {
+    entryIndices[i] = bb.readInt();
+  }
+
+  // Get entries
+  for (var i = 0; i < entryCount; ++i) {
+    if (entryIndices[i] == -1) continue;
+
+    var resource_id = this.package_id << 24 | id << 16 | i;
+
+    var pos = bb.offset,
+        entry_size = bb.readShort(),
+        entry_flag = bb.readShort(),
+        entry_key = bb.readInt(),
+        value_size,
+        value_res0,
+        value_dataType,
+        value_data;
+
+    // Get the value (simple) or map (complex)
+
+    var FLAG_COMPLEX = 0x0001;
+    if ((entry_flag & FLAG_COMPLEX) == 0) {
+      // Simple case
+      value_size = bb.readShort();
+      value_res0 = bb.readByte();
+      value_dataType = bb.readByte();
+      value_data = bb.readInt();
+
+      var idStr = Number(resource_id).toString(16);
+      var keyStr = this.keyStringPool[entry_key];
+
+      var data = null;
+
+      if (DEBUG) {
+        console.log("Entry 0x" + idStr + ", key: " + keyStr + ", simple value type: ");
+      }
+
+      var key = parseInt(idStr, 16);
+
+      var entryArr = this.entryMap[key];
+      if (entryArr == null) {
+        entryArr = [];
+      }
+      entryArr.push(keyStr);
+
+      this.entryMap[key] = entryArr;
+
+      if (value_dataType == TYPE_STRING) {
+        data = this.valueStringPool[value_data];
+
+        if (DEBUG) {
+          console.log(", data: " + this.valueStringPool[value_data] + "");
+        }
+      } else if (value_dataType == TYPE_REFERENCE) {
+        var hexIndex = Number(value_data).toString(16);
+
+        refKeys[idStr] = value_data;
+      } else {
+        data = "" + value_data;
+        if (DEBUG) {
+          console.log(", data: " + value_data + "");
+        }
+      }
+
+      this.putIntoMap("@" + idStr, data);
+    } else {
+      // Complex case
+      var entry_parent = bb.readInt();
+      var entry_count = bb.readInt();
+
+      for (var j = 0; j < entry_count; ++j) {
+        var ref_name = bb.readInt();
+        value_size = bb.readShort();
+        value_res0 = bb.readByte();
+        value_dataType = bb.readByte();
+        value_data = bb.readInt();
+      }
+
+      if (DEBUG) {
+        console.log("Entry 0x" + Number(resource_id).toString(16) + ", key: " + this.keyStringPool[entry_key] + ", complex value, not printed.");
+      }
+    }
+  }
+
+  for (var refK in refKeys) {
+    var values = this.responseMap["@" + Number(refKeys[refK]).toString(16).toUpperCase()];
+    if (values != null) {
+      for (var value in values) {
+        this.putIntoMap("@" + refK, value);
+      }
+    }
+  }
+};
+
+/**
+ *
+ * @param {ByteBuffer} bb
+ * @return {Array}
+ */
+ResourceFinder.prototype.processStringPool = function (bb) {
+  // String pool structure
+  //
+  var type = bb.readShort(),
+      headerSize = bb.readShort(),
+      size = bb.readInt(),
+      stringCount = bb.readInt(),
+      styleCount = bb.readInt(),
+      flags = bb.readInt(),
+      stringsStart = bb.readInt(),
+      stylesStart = bb.readInt(),
+      u16len,
+      buffer;
+
+  var isUTF_8 = (flags & 256) != 0;
+
+  var offsets = new Array(stringCount);
+  for (var i = 0; i < stringCount; ++i) {
+    offsets[i] = bb.readInt();
+  }
+
+  var strings = new Array(stringCount);
+
+  for (var i = 0; i < stringCount; ++i) {
+    var pos = stringsStart + offsets[i];
+    bb.offset = pos;
+
+    strings[i] = "";
+
+    if (isUTF_8) {
+      u16len = bb.readUint8();
+
+      if ((u16len & 0x80) != 0) {
+        u16len = ((u16len & 0x7f) << 8) + bb.readUint8();
+      }
+
+      var u8len = bb.readUint8();
+      if ((u8len & 0x80) != 0) {
+        u8len = ((u8len & 0x7f) << 8) + bb.readUint8();
+      }
+
+      if (u8len > 0) {
+        buffer = ResourceFinder.readBytes(bb, u8len);
+        try {
+          strings[i] = ByteBuffer.wrap(buffer, "utf8", true).toString("utf8");
+        } catch (e) {
+          if (DEBUG) {
+            console.error(e);
+            console.log("Error when turning buffer to utf-8 string.");
+          }
+        }
+      } else {
+        strings[i] = "";
+      }
+    } else {
+      u16len = bb.readUint16();
+      if ((u16len & 0x8000) != 0) {
+        // larger than 32768
+        u16len = ((u16len & 0x7fff) << 16) + bb.readUint16();
+      }
+
+      if (u16len > 0) {
+        var len = u16len * 2;
+        buffer = ResourceFinder.readBytes(bb, len);
+        try {
+          strings[i] = ByteBuffer.wrap(buffer, "utf8", true).toString("utf8");
+        } catch (e) {
+          if (DEBUG) {
+            console.error(e);
+            console.log("Error when turning buffer to utf-8 string.");
+          }
+        }
+      }
+    }
+
+    if (DEBUG) {
+      console.log("Parsed value: {0}", strings[i]);
+    }
+  }
+
+  return strings;
+};
+
+/**
+ *
+ * @param {ByteBuffer} bb
+ */
+ResourceFinder.prototype.processTypeSpec = function (bb) {
+  var type = bb.readShort(),
+      headerSize = bb.readShort(),
+      size = bb.readInt(),
+      id = bb.readByte(),
+      res0 = bb.readByte(),
+      res1 = bb.readShort(),
+      entryCount = bb.readInt();
+
+  if (DEBUG) {
+    console.log("Processing type spec " + this.typeStringPool[id - 1] + "...");
+  }
+
+  var flags = new Array(entryCount);
+
+  for (var i = 0; i < entryCount; ++i) {
+    flags[i] = bb.readInt();
+  }
+};
+
+ResourceFinder.prototype.putIntoMap = function (resId, value) {
+  var valueList = this.responseMap[resId.toUpperCase()];
+
+  if (valueList == null) {
+    valueList = [];
+  }
+  valueList.push(value);
+
+  this.responseMap[resId.toUpperCase()] = valueList;
+};
+
+module.exports = ResourceFinder;
+
+},{"bytebuffer":21}],5:[function(require,module,exports){
+'use strict';
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
+function objectType(o) {
+  return Object.prototype.toString.call(o).slice(8, -1).toLowerCase();
+}
+
+function isArray(o) {
+  return objectType(o) === 'array';
+}
+
+function isObject(o) {
+  return objectType(o) === 'object';
+}
+
+function isPrimitive(o) {
+  return o === null || ['boolean', 'number', 'string', 'undefined'].includes(objectType(o));
+}
+
+function isBrowser() {
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
+/**
+ * 根据resourceMap解析apkInfo中的文件位置
+ * @param {Object} apkInfo // apk安装包解析出来的信息
+ * @param {Object} resourceMap // resourceMap
+ */
+function mapInfoResource(apkInfo, resourceMap) {
+  iteratorObj(apkInfo);
+  return apkInfo;
+  function iteratorObj(obj) {
+    for (var i in obj) {
+      if (isArray(obj[i])) {
+        iteratorArray(obj[i]);
+      } else if (isObject(obj[i])) {
+        iteratorObj(obj[i]);
+      } else if (isPrimitive(obj[i])) {
+        if (isResouces(obj[i])) {
+          obj[i] = resourceMap[transKeyToMatchResourceMap(obj[i])];
+        }
+      }
+    }
+  }
+
+  function iteratorArray(array) {
+    var l = array.length;
+    for (var i = 0; i < l; i++) {
+      if (isArray(array[i])) {
+        iteratorArray(array[i]);
+      } else if (isObject(array[i])) {
+        iteratorObj(array[i]);
+      } else if (isPrimitive(array[i])) {
+        if (isResouces(array[i])) {
+          array[i] = resourceMap[transKeyToMatchResourceMap(array[i])];
+        }
+      }
+    }
+  }
+
+  function isResouces(attrValue) {
+    if (!attrValue) return false;
+    if (typeof attrValue !== 'string') {
+      attrValue = attrValue.toString();
+    }
+    return attrValue.indexOf('resourceId:') === 0;
+  }
+
+  function transKeyToMatchResourceMap(resourceId) {
+    return '@' + resourceId.replace('resourceId:0x', '').toUpperCase();
+  }
+}
+
+/**
+ * 查找 apk 文件解析信息中的 icon 文件位置
+ * @param info // apk文件解析出来的信息
+ */
+function findApkInfoIcon(info) {
+  if (info.application.icon && info.application.icon.splice) {
+    var _ret = function () {
+      var rulesMap = {
+        mdpi: 48,
+        hdpi: 72,
+        xhdpi: 96,
+        xxdpi: 144,
+        xxxhdpi: 192
+      };
+      var resultMap = {};
+      var maxDpiIcon = { dpi: 120, icon: '' };
+
+      var _loop = function _loop(i) {
+        info.application.icon.some(function (icon) {
+          if (icon.indexOf(i) !== -1) {
+            resultMap['application-icon-' + rulesMap[i]] = icon;
+            return true;
+          }
+        });
+
+        // 取出最大规格的icon
+        if (resultMap['application-icon-' + rulesMap[i]] && rulesMap[i] >= maxDpiIcon.dpi) {
+          maxDpiIcon.dpi = rulesMap[i];
+          maxDpiIcon.icon = resultMap['application-icon-' + rulesMap[i]];
+        }
+      };
+
+      for (var i in rulesMap) {
+        _loop(i);
+      }
+
+      if (Object.keys(resultMap).length === 0 || !maxDpiIcon.icon) {
+        maxDpiIcon.dpi = 120;
+        maxDpiIcon.icon = info.application.icon[0] || '';
+        resultMap['applicataion-icon-120'] = maxDpiIcon.icon;
+      }
+
+      return {
+        v: maxDpiIcon.icon
+      };
+    }();
+
+    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
+  } else {
+    console.error('Unexpected icon type,', info.application.icon);
+  }
+}
+
+/**
+ * 查找 ipa 文件解析信息中的 icon 文件位置
+ * @param info // ipa文件解析出来的信息
+ */
+function findIpaInfoIcon(info) {
+  if (info.CFBundleIcons && info.CFBundleIcons.CFBundlePrimaryIcon && info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles && info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.length) {
+    return info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles[info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.length - 1];
+  } else if (info.CFBundleIconFiles && info.CFBundleIconFiles.length) {
+    return info.CFBundleIconFiles[info.CFBundleIconFiles.length - 1];
+  } else {
+    return '.app/Icon.png';
+  }
+}
+
+/**
+ * 将buffer转为base64编码
+ * @param {Buffer} buffer
+ */
+function getBase64FromBuffer(buffer) {
+  return 'data:image/png;base64,' + buffer.toString('base64');
+}
+
+module.exports = {
+  isArray: isArray,
+  isObject: isObject,
+  isPrimitive: isPrimitive,
+  isBrowser: isBrowser,
+  mapInfoResource: mapInfoResource,
+  findApkInfoIcon: findApkInfoIcon,
+  findIpaInfoIcon: findIpaInfoIcon,
+  getBase64FromBuffer: getBase64FromBuffer
+};
+
+},{}],6:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -871,7 +1611,7 @@ var BinaryXmlParser = function () {
 
 module.exports = BinaryXmlParser;
 
-},{}],6:[function(_dereq_,module,exports){
+},{}],7:[function(require,module,exports){
 'use strict';
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
@@ -879,7 +1619,7 @@ var _createClass = function () { function defineProperties(target, props) { for 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 // From https://github.com/openstf/adbkit-apkreader
-var BinaryXmlParser = _dereq_('./binary');
+var BinaryXmlParser = require('./binary');
 
 var INTENT_MAIN = 'android.intent.action.MAIN';
 var CATEGORY_LAUNCHER = 'android.intent.category.LAUNCHER';
@@ -1138,7 +1878,572 @@ var ManifestParser = function () {
 
 module.exports = ManifestParser;
 
-},{"./binary":5}],7:[function(_dereq_,module,exports){
+},{"./binary":6}],8:[function(require,module,exports){
+'use strict';
+
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var Unzip = require('isomorphic-unzip');
+
+var _require = require('./utils'),
+    isBrowser = _require.isBrowser;
+
+var Zip = function () {
+  function Zip(file) {
+    _classCallCheck(this, Zip);
+
+    if (isBrowser()) {
+      if (!(file instanceof window.Blob || typeof file.size !== 'undefined')) {
+        throw new Error('Param error: [file] must be an instance of Blob or File in browser.');
+      }
+      this.file = file;
+    } else {
+      if (typeof file !== 'string') {
+        throw new Error('Param error: [file] must be file path in Node.');
+      }
+      this.file = require('path').resolve(file);
+    }
+    this.unzip = new Unzip(this.file);
+  }
+
+  /**
+   * 获取安装包文件，返回类型：{ <filename>: <Buffer|Blob> }
+   * @param {Array} regexs // 匹配文件的正则表达式数组
+   * @param {String} type // 输出文件类型，默认buffer，type='blob'时返回blob
+   */
+
+
+  _createClass(Zip, [{
+    key: 'getEntries',
+    value: function getEntries(regexs) {
+      var _this = this;
+
+      var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'buffer';
+
+      return new Promise(function (resolve, reject) {
+        _this.unzip.getBuffer(regexs, { type: type }, function (err, buffers) {
+          err ? reject(err) : resolve(buffers);
+        });
+      });
+    }
+  }, {
+    key: 'getEntry',
+    value: function getEntry(regex) {
+      var _this2 = this;
+
+      var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'buffer';
+
+      return new Promise(function (resolve, reject) {
+        _this2.unzip.getBuffer([regex], { type: type }, function (err, buffers) {
+          err ? reject(err) : resolve(buffers[regex]);
+        });
+      });
+    }
+  }]);
+
+  return Zip;
+}();
+
+module.exports = Zip;
+
+},{"./utils":5,"isomorphic-unzip":57,"path":70}],9:[function(require,module,exports){
+(function (global){
+'use strict';
+
+// compare and isBuffer taken from https://github.com/feross/buffer/blob/680e9e5e488f22aac27599a57dc844a6315928dd/index.js
+// original notice:
+
+/*!
+ * The buffer module from node.js, for the browser.
+ *
+ * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @license  MIT
+ */
+function compare(a, b) {
+  if (a === b) {
+    return 0;
+  }
+
+  var x = a.length;
+  var y = b.length;
+
+  for (var i = 0, len = Math.min(x, y); i < len; ++i) {
+    if (a[i] !== b[i]) {
+      x = a[i];
+      y = b[i];
+      break;
+    }
+  }
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  return 0;
+}
+function isBuffer(b) {
+  if (global.Buffer && typeof global.Buffer.isBuffer === 'function') {
+    return global.Buffer.isBuffer(b);
+  }
+  return !!(b != null && b._isBuffer);
+}
+
+// based on node assert, original notice:
+
+// http://wiki.commonjs.org/wiki/Unit_Testing/1.0
+//
+// THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
+//
+// Originally from narwhal.js (http://narwhaljs.org)
+// Copyright (c) 2009 Thomas Robinson <280north.com>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the 'Software'), to
+// deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+var util = require('util/');
+var hasOwn = Object.prototype.hasOwnProperty;
+var pSlice = Array.prototype.slice;
+var functionsHaveNames = (function () {
+  return function foo() {}.name === 'foo';
+}());
+function pToString (obj) {
+  return Object.prototype.toString.call(obj);
+}
+function isView(arrbuf) {
+  if (isBuffer(arrbuf)) {
+    return false;
+  }
+  if (typeof global.ArrayBuffer !== 'function') {
+    return false;
+  }
+  if (typeof ArrayBuffer.isView === 'function') {
+    return ArrayBuffer.isView(arrbuf);
+  }
+  if (!arrbuf) {
+    return false;
+  }
+  if (arrbuf instanceof DataView) {
+    return true;
+  }
+  if (arrbuf.buffer && arrbuf.buffer instanceof ArrayBuffer) {
+    return true;
+  }
+  return false;
+}
+// 1. The assert module provides functions that throw
+// AssertionError's when particular conditions are not met. The
+// assert module must conform to the following interface.
+
+var assert = module.exports = ok;
+
+// 2. The AssertionError is defined in assert.
+// new assert.AssertionError({ message: message,
+//                             actual: actual,
+//                             expected: expected })
+
+var regex = /\s*function\s+([^\(\s]*)\s*/;
+// based on https://github.com/ljharb/function.prototype.name/blob/adeeeec8bfcc6068b187d7d9fb3d5bb1d3a30899/implementation.js
+function getName(func) {
+  if (!util.isFunction(func)) {
+    return;
+  }
+  if (functionsHaveNames) {
+    return func.name;
+  }
+  var str = func.toString();
+  var match = str.match(regex);
+  return match && match[1];
+}
+assert.AssertionError = function AssertionError(options) {
+  this.name = 'AssertionError';
+  this.actual = options.actual;
+  this.expected = options.expected;
+  this.operator = options.operator;
+  if (options.message) {
+    this.message = options.message;
+    this.generatedMessage = false;
+  } else {
+    this.message = getMessage(this);
+    this.generatedMessage = true;
+  }
+  var stackStartFunction = options.stackStartFunction || fail;
+  if (Error.captureStackTrace) {
+    Error.captureStackTrace(this, stackStartFunction);
+  } else {
+    // non v8 browsers so we can have a stacktrace
+    var err = new Error();
+    if (err.stack) {
+      var out = err.stack;
+
+      // try to strip useless frames
+      var fn_name = getName(stackStartFunction);
+      var idx = out.indexOf('\n' + fn_name);
+      if (idx >= 0) {
+        // once we have located the function frame
+        // we need to strip out everything before it (and its line)
+        var next_line = out.indexOf('\n', idx + 1);
+        out = out.substring(next_line + 1);
+      }
+
+      this.stack = out;
+    }
+  }
+};
+
+// assert.AssertionError instanceof Error
+util.inherits(assert.AssertionError, Error);
+
+function truncate(s, n) {
+  if (typeof s === 'string') {
+    return s.length < n ? s : s.slice(0, n);
+  } else {
+    return s;
+  }
+}
+function inspect(something) {
+  if (functionsHaveNames || !util.isFunction(something)) {
+    return util.inspect(something);
+  }
+  var rawname = getName(something);
+  var name = rawname ? ': ' + rawname : '';
+  return '[Function' +  name + ']';
+}
+function getMessage(self) {
+  return truncate(inspect(self.actual), 128) + ' ' +
+         self.operator + ' ' +
+         truncate(inspect(self.expected), 128);
+}
+
+// At present only the three keys mentioned above are used and
+// understood by the spec. Implementations or sub modules can pass
+// other keys to the AssertionError's constructor - they will be
+// ignored.
+
+// 3. All of the following functions must throw an AssertionError
+// when a corresponding condition is not met, with a message that
+// may be undefined if not provided.  All assertion methods provide
+// both the actual and expected values to the assertion error for
+// display purposes.
+
+function fail(actual, expected, message, operator, stackStartFunction) {
+  throw new assert.AssertionError({
+    message: message,
+    actual: actual,
+    expected: expected,
+    operator: operator,
+    stackStartFunction: stackStartFunction
+  });
+}
+
+// EXTENSION! allows for well behaved errors defined elsewhere.
+assert.fail = fail;
+
+// 4. Pure assertion tests whether a value is truthy, as determined
+// by !!guard.
+// assert.ok(guard, message_opt);
+// This statement is equivalent to assert.equal(true, !!guard,
+// message_opt);. To test strictly for the value true, use
+// assert.strictEqual(true, guard, message_opt);.
+
+function ok(value, message) {
+  if (!value) fail(value, true, message, '==', assert.ok);
+}
+assert.ok = ok;
+
+// 5. The equality assertion tests shallow, coercive equality with
+// ==.
+// assert.equal(actual, expected, message_opt);
+
+assert.equal = function equal(actual, expected, message) {
+  if (actual != expected) fail(actual, expected, message, '==', assert.equal);
+};
+
+// 6. The non-equality assertion tests for whether two objects are not equal
+// with != assert.notEqual(actual, expected, message_opt);
+
+assert.notEqual = function notEqual(actual, expected, message) {
+  if (actual == expected) {
+    fail(actual, expected, message, '!=', assert.notEqual);
+  }
+};
+
+// 7. The equivalence assertion tests a deep equality relation.
+// assert.deepEqual(actual, expected, message_opt);
+
+assert.deepEqual = function deepEqual(actual, expected, message) {
+  if (!_deepEqual(actual, expected, false)) {
+    fail(actual, expected, message, 'deepEqual', assert.deepEqual);
+  }
+};
+
+assert.deepStrictEqual = function deepStrictEqual(actual, expected, message) {
+  if (!_deepEqual(actual, expected, true)) {
+    fail(actual, expected, message, 'deepStrictEqual', assert.deepStrictEqual);
+  }
+};
+
+function _deepEqual(actual, expected, strict, memos) {
+  // 7.1. All identical values are equivalent, as determined by ===.
+  if (actual === expected) {
+    return true;
+  } else if (isBuffer(actual) && isBuffer(expected)) {
+    return compare(actual, expected) === 0;
+
+  // 7.2. If the expected value is a Date object, the actual value is
+  // equivalent if it is also a Date object that refers to the same time.
+  } else if (util.isDate(actual) && util.isDate(expected)) {
+    return actual.getTime() === expected.getTime();
+
+  // 7.3 If the expected value is a RegExp object, the actual value is
+  // equivalent if it is also a RegExp object with the same source and
+  // properties (`global`, `multiline`, `lastIndex`, `ignoreCase`).
+  } else if (util.isRegExp(actual) && util.isRegExp(expected)) {
+    return actual.source === expected.source &&
+           actual.global === expected.global &&
+           actual.multiline === expected.multiline &&
+           actual.lastIndex === expected.lastIndex &&
+           actual.ignoreCase === expected.ignoreCase;
+
+  // 7.4. Other pairs that do not both pass typeof value == 'object',
+  // equivalence is determined by ==.
+  } else if ((actual === null || typeof actual !== 'object') &&
+             (expected === null || typeof expected !== 'object')) {
+    return strict ? actual === expected : actual == expected;
+
+  // If both values are instances of typed arrays, wrap their underlying
+  // ArrayBuffers in a Buffer each to increase performance
+  // This optimization requires the arrays to have the same type as checked by
+  // Object.prototype.toString (aka pToString). Never perform binary
+  // comparisons for Float*Arrays, though, since e.g. +0 === -0 but their
+  // bit patterns are not identical.
+  } else if (isView(actual) && isView(expected) &&
+             pToString(actual) === pToString(expected) &&
+             !(actual instanceof Float32Array ||
+               actual instanceof Float64Array)) {
+    return compare(new Uint8Array(actual.buffer),
+                   new Uint8Array(expected.buffer)) === 0;
+
+  // 7.5 For all other Object pairs, including Array objects, equivalence is
+  // determined by having the same number of owned properties (as verified
+  // with Object.prototype.hasOwnProperty.call), the same set of keys
+  // (although not necessarily the same order), equivalent values for every
+  // corresponding key, and an identical 'prototype' property. Note: this
+  // accounts for both named and indexed properties on Arrays.
+  } else if (isBuffer(actual) !== isBuffer(expected)) {
+    return false;
+  } else {
+    memos = memos || {actual: [], expected: []};
+
+    var actualIndex = memos.actual.indexOf(actual);
+    if (actualIndex !== -1) {
+      if (actualIndex === memos.expected.indexOf(expected)) {
+        return true;
+      }
+    }
+
+    memos.actual.push(actual);
+    memos.expected.push(expected);
+
+    return objEquiv(actual, expected, strict, memos);
+  }
+}
+
+function isArguments(object) {
+  return Object.prototype.toString.call(object) == '[object Arguments]';
+}
+
+function objEquiv(a, b, strict, actualVisitedObjects) {
+  if (a === null || a === undefined || b === null || b === undefined)
+    return false;
+  // if one is a primitive, the other must be same
+  if (util.isPrimitive(a) || util.isPrimitive(b))
+    return a === b;
+  if (strict && Object.getPrototypeOf(a) !== Object.getPrototypeOf(b))
+    return false;
+  var aIsArgs = isArguments(a);
+  var bIsArgs = isArguments(b);
+  if ((aIsArgs && !bIsArgs) || (!aIsArgs && bIsArgs))
+    return false;
+  if (aIsArgs) {
+    a = pSlice.call(a);
+    b = pSlice.call(b);
+    return _deepEqual(a, b, strict);
+  }
+  var ka = objectKeys(a);
+  var kb = objectKeys(b);
+  var key, i;
+  // having the same number of owned properties (keys incorporates
+  // hasOwnProperty)
+  if (ka.length !== kb.length)
+    return false;
+  //the same set of keys (although not necessarily the same order),
+  ka.sort();
+  kb.sort();
+  //~~~cheap key test
+  for (i = ka.length - 1; i >= 0; i--) {
+    if (ka[i] !== kb[i])
+      return false;
+  }
+  //equivalent values for every corresponding key, and
+  //~~~possibly expensive deep test
+  for (i = ka.length - 1; i >= 0; i--) {
+    key = ka[i];
+    if (!_deepEqual(a[key], b[key], strict, actualVisitedObjects))
+      return false;
+  }
+  return true;
+}
+
+// 8. The non-equivalence assertion tests for any deep inequality.
+// assert.notDeepEqual(actual, expected, message_opt);
+
+assert.notDeepEqual = function notDeepEqual(actual, expected, message) {
+  if (_deepEqual(actual, expected, false)) {
+    fail(actual, expected, message, 'notDeepEqual', assert.notDeepEqual);
+  }
+};
+
+assert.notDeepStrictEqual = notDeepStrictEqual;
+function notDeepStrictEqual(actual, expected, message) {
+  if (_deepEqual(actual, expected, true)) {
+    fail(actual, expected, message, 'notDeepStrictEqual', notDeepStrictEqual);
+  }
+}
+
+
+// 9. The strict equality assertion tests strict equality, as determined by ===.
+// assert.strictEqual(actual, expected, message_opt);
+
+assert.strictEqual = function strictEqual(actual, expected, message) {
+  if (actual !== expected) {
+    fail(actual, expected, message, '===', assert.strictEqual);
+  }
+};
+
+// 10. The strict non-equality assertion tests for strict inequality, as
+// determined by !==.  assert.notStrictEqual(actual, expected, message_opt);
+
+assert.notStrictEqual = function notStrictEqual(actual, expected, message) {
+  if (actual === expected) {
+    fail(actual, expected, message, '!==', assert.notStrictEqual);
+  }
+};
+
+function expectedException(actual, expected) {
+  if (!actual || !expected) {
+    return false;
+  }
+
+  if (Object.prototype.toString.call(expected) == '[object RegExp]') {
+    return expected.test(actual);
+  }
+
+  try {
+    if (actual instanceof expected) {
+      return true;
+    }
+  } catch (e) {
+    // Ignore.  The instanceof check doesn't work for arrow functions.
+  }
+
+  if (Error.isPrototypeOf(expected)) {
+    return false;
+  }
+
+  return expected.call({}, actual) === true;
+}
+
+function _tryBlock(block) {
+  var error;
+  try {
+    block();
+  } catch (e) {
+    error = e;
+  }
+  return error;
+}
+
+function _throws(shouldThrow, block, expected, message) {
+  var actual;
+
+  if (typeof block !== 'function') {
+    throw new TypeError('"block" argument must be a function');
+  }
+
+  if (typeof expected === 'string') {
+    message = expected;
+    expected = null;
+  }
+
+  actual = _tryBlock(block);
+
+  message = (expected && expected.name ? ' (' + expected.name + ').' : '.') +
+            (message ? ' ' + message : '.');
+
+  if (shouldThrow && !actual) {
+    fail(actual, expected, 'Missing expected exception' + message);
+  }
+
+  var userProvidedMessage = typeof message === 'string';
+  var isUnwantedException = !shouldThrow && util.isError(actual);
+  var isUnexpectedException = !shouldThrow && actual && !expected;
+
+  if ((isUnwantedException &&
+      userProvidedMessage &&
+      expectedException(actual, expected)) ||
+      isUnexpectedException) {
+    fail(actual, expected, 'Got unwanted exception' + message);
+  }
+
+  if ((shouldThrow && actual && expected &&
+      !expectedException(actual, expected)) || (!shouldThrow && actual)) {
+    throw actual;
+  }
+}
+
+// 11. Expected to throw an error:
+// assert.throws(block, Error_opt, message_opt);
+
+assert.throws = function(block, /*optional*/error, /*optional*/message) {
+  _throws(true, block, error, message);
+};
+
+// EXTENSION! This is annoying to write outside this module.
+assert.doesNotThrow = function(block, /*optional*/error, /*optional*/message) {
+  _throws(false, block, error, message);
+};
+
+assert.ifError = function(err) { if (err) throw err; };
+
+var objectKeys = Object.keys || function (obj) {
+  var keys = [];
+  for (var key in obj) {
+    if (hasOwn.call(obj, key)) keys.push(key);
+  }
+  return keys;
+};
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+
+},{"util/":93}],10:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -1291,7 +2596,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],8:[function(_dereq_,module,exports){
+},{}],11:[function(require,module,exports){
 var bigInt = (function (undefined) {
     "use strict";
 
@@ -2614,14 +3919,14 @@ if (typeof define === "function" && define.amd) {
     });
 }
 
-},{}],9:[function(_dereq_,module,exports){
+},{}],12:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
 // adapted from http://code.google.com/p/plist/source/browse/trunk/src/com/dd/plist/BinaryPropertyListParser.java
 
-var fs = _dereq_('fs');
-var bigInt = _dereq_("big-integer");
+var fs = require('fs');
+var bigInt = require("big-integer");
 var debug = false;
 
 exports.maxObjectSize = 100 * 1000 * 1000; // 100Meg
@@ -2974,13 +4279,1039 @@ function swapBytes(buffer) {
   return buffer;
 }
 
-}).call(this,_dereq_("buffer").Buffer)
+}).call(this,require("buffer").Buffer)
 
-},{"big-integer":8,"buffer":12,"fs":11}],10:[function(_dereq_,module,exports){
+},{"big-integer":11,"buffer":17,"fs":16}],13:[function(require,module,exports){
 
-},{}],11:[function(_dereq_,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"dup":10}],12:[function(_dereq_,module,exports){
+},{}],14:[function(require,module,exports){
+(function (process,Buffer){
+'use strict';
+/* eslint camelcase: "off" */
+
+var assert = require('assert');
+
+var Zstream = require('pako/lib/zlib/zstream');
+var zlib_deflate = require('pako/lib/zlib/deflate.js');
+var zlib_inflate = require('pako/lib/zlib/inflate.js');
+var constants = require('pako/lib/zlib/constants');
+
+for (var key in constants) {
+  exports[key] = constants[key];
+}
+
+// zlib modes
+exports.NONE = 0;
+exports.DEFLATE = 1;
+exports.INFLATE = 2;
+exports.GZIP = 3;
+exports.GUNZIP = 4;
+exports.DEFLATERAW = 5;
+exports.INFLATERAW = 6;
+exports.UNZIP = 7;
+
+var GZIP_HEADER_ID1 = 0x1f;
+var GZIP_HEADER_ID2 = 0x8b;
+
+/**
+ * Emulate Node's zlib C++ layer for use by the JS layer in index.js
+ */
+function Zlib(mode) {
+  if (typeof mode !== 'number' || mode < exports.DEFLATE || mode > exports.UNZIP) {
+    throw new TypeError('Bad argument');
+  }
+
+  this.dictionary = null;
+  this.err = 0;
+  this.flush = 0;
+  this.init_done = false;
+  this.level = 0;
+  this.memLevel = 0;
+  this.mode = mode;
+  this.strategy = 0;
+  this.windowBits = 0;
+  this.write_in_progress = false;
+  this.pending_close = false;
+  this.gzip_id_bytes_read = 0;
+}
+
+Zlib.prototype.close = function () {
+  if (this.write_in_progress) {
+    this.pending_close = true;
+    return;
+  }
+
+  this.pending_close = false;
+
+  assert(this.init_done, 'close before init');
+  assert(this.mode <= exports.UNZIP);
+
+  if (this.mode === exports.DEFLATE || this.mode === exports.GZIP || this.mode === exports.DEFLATERAW) {
+    zlib_deflate.deflateEnd(this.strm);
+  } else if (this.mode === exports.INFLATE || this.mode === exports.GUNZIP || this.mode === exports.INFLATERAW || this.mode === exports.UNZIP) {
+    zlib_inflate.inflateEnd(this.strm);
+  }
+
+  this.mode = exports.NONE;
+
+  this.dictionary = null;
+};
+
+Zlib.prototype.write = function (flush, input, in_off, in_len, out, out_off, out_len) {
+  return this._write(true, flush, input, in_off, in_len, out, out_off, out_len);
+};
+
+Zlib.prototype.writeSync = function (flush, input, in_off, in_len, out, out_off, out_len) {
+  return this._write(false, flush, input, in_off, in_len, out, out_off, out_len);
+};
+
+Zlib.prototype._write = function (async, flush, input, in_off, in_len, out, out_off, out_len) {
+  assert.equal(arguments.length, 8);
+
+  assert(this.init_done, 'write before init');
+  assert(this.mode !== exports.NONE, 'already finalized');
+  assert.equal(false, this.write_in_progress, 'write already in progress');
+  assert.equal(false, this.pending_close, 'close is pending');
+
+  this.write_in_progress = true;
+
+  assert.equal(false, flush === undefined, 'must provide flush value');
+
+  this.write_in_progress = true;
+
+  if (flush !== exports.Z_NO_FLUSH && flush !== exports.Z_PARTIAL_FLUSH && flush !== exports.Z_SYNC_FLUSH && flush !== exports.Z_FULL_FLUSH && flush !== exports.Z_FINISH && flush !== exports.Z_BLOCK) {
+    throw new Error('Invalid flush value');
+  }
+
+  if (input == null) {
+    input = Buffer.alloc(0);
+    in_len = 0;
+    in_off = 0;
+  }
+
+  this.strm.avail_in = in_len;
+  this.strm.input = input;
+  this.strm.next_in = in_off;
+  this.strm.avail_out = out_len;
+  this.strm.output = out;
+  this.strm.next_out = out_off;
+  this.flush = flush;
+
+  if (!async) {
+    // sync version
+    this._process();
+
+    if (this._checkError()) {
+      return this._afterSync();
+    }
+    return;
+  }
+
+  // async version
+  var self = this;
+  process.nextTick(function () {
+    self._process();
+    self._after();
+  });
+
+  return this;
+};
+
+Zlib.prototype._afterSync = function () {
+  var avail_out = this.strm.avail_out;
+  var avail_in = this.strm.avail_in;
+
+  this.write_in_progress = false;
+
+  return [avail_in, avail_out];
+};
+
+Zlib.prototype._process = function () {
+  var next_expected_header_byte = null;
+
+  // If the avail_out is left at 0, then it means that it ran out
+  // of room.  If there was avail_out left over, then it means
+  // that all of the input was consumed.
+  switch (this.mode) {
+    case exports.DEFLATE:
+    case exports.GZIP:
+    case exports.DEFLATERAW:
+      this.err = zlib_deflate.deflate(this.strm, this.flush);
+      break;
+    case exports.UNZIP:
+      if (this.strm.avail_in > 0) {
+        next_expected_header_byte = this.strm.next_in;
+      }
+
+      switch (this.gzip_id_bytes_read) {
+        case 0:
+          if (next_expected_header_byte === null) {
+            break;
+          }
+
+          if (this.strm.input[next_expected_header_byte] === GZIP_HEADER_ID1) {
+            this.gzip_id_bytes_read = 1;
+            next_expected_header_byte++;
+
+            if (this.strm.avail_in === 1) {
+              // The only available byte was already read.
+              break;
+            }
+          } else {
+            this.mode = exports.INFLATE;
+            break;
+          }
+
+        // fallthrough
+        case 1:
+          if (next_expected_header_byte === null) {
+            break;
+          }
+
+          if (this.strm.input[next_expected_header_byte] === GZIP_HEADER_ID2) {
+            this.gzip_id_bytes_read = 2;
+            this.mode = exports.GUNZIP;
+          } else {
+            // There is no actual difference between INFLATE and INFLATERAW
+            // (after initialization).
+            this.mode = exports.INFLATE;
+          }
+
+          break;
+        default:
+          throw new Error('invalid number of gzip magic number bytes read');
+      }
+
+    // fallthrough
+    case exports.INFLATE:
+    case exports.GUNZIP:
+    case exports.INFLATERAW:
+      this.err = zlib_inflate.inflate(this.strm, this.flush
+
+      // If data was encoded with dictionary
+      );if (this.err === exports.Z_NEED_DICT && this.dictionary) {
+        // Load it
+        this.err = zlib_inflate.inflateSetDictionary(this.strm, this.dictionary);
+        if (this.err === exports.Z_OK) {
+          // And try to decode again
+          this.err = zlib_inflate.inflate(this.strm, this.flush);
+        } else if (this.err === exports.Z_DATA_ERROR) {
+          // Both inflateSetDictionary() and inflate() return Z_DATA_ERROR.
+          // Make it possible for After() to tell a bad dictionary from bad
+          // input.
+          this.err = exports.Z_NEED_DICT;
+        }
+      }
+      while (this.strm.avail_in > 0 && this.mode === exports.GUNZIP && this.err === exports.Z_STREAM_END && this.strm.next_in[0] !== 0x00) {
+        // Bytes remain in input buffer. Perhaps this is another compressed
+        // member in the same archive, or just trailing garbage.
+        // Trailing zero bytes are okay, though, since they are frequently
+        // used for padding.
+
+        this.reset();
+        this.err = zlib_inflate.inflate(this.strm, this.flush);
+      }
+      break;
+    default:
+      throw new Error('Unknown mode ' + this.mode);
+  }
+};
+
+Zlib.prototype._checkError = function () {
+  // Acceptable error states depend on the type of zlib stream.
+  switch (this.err) {
+    case exports.Z_OK:
+    case exports.Z_BUF_ERROR:
+      if (this.strm.avail_out !== 0 && this.flush === exports.Z_FINISH) {
+        this._error('unexpected end of file');
+        return false;
+      }
+      break;
+    case exports.Z_STREAM_END:
+      // normal statuses, not fatal
+      break;
+    case exports.Z_NEED_DICT:
+      if (this.dictionary == null) {
+        this._error('Missing dictionary');
+      } else {
+        this._error('Bad dictionary');
+      }
+      return false;
+    default:
+      // something else.
+      this._error('Zlib error');
+      return false;
+  }
+
+  return true;
+};
+
+Zlib.prototype._after = function () {
+  if (!this._checkError()) {
+    return;
+  }
+
+  var avail_out = this.strm.avail_out;
+  var avail_in = this.strm.avail_in;
+
+  this.write_in_progress = false;
+
+  // call the write() cb
+  this.callback(avail_in, avail_out);
+
+  if (this.pending_close) {
+    this.close();
+  }
+};
+
+Zlib.prototype._error = function (message) {
+  if (this.strm.msg) {
+    message = this.strm.msg;
+  }
+  this.onerror(message, this.err
+
+  // no hope of rescue.
+  );this.write_in_progress = false;
+  if (this.pending_close) {
+    this.close();
+  }
+};
+
+Zlib.prototype.init = function (windowBits, level, memLevel, strategy, dictionary) {
+  assert(arguments.length === 4 || arguments.length === 5, 'init(windowBits, level, memLevel, strategy, [dictionary])');
+
+  assert(windowBits >= 8 && windowBits <= 15, 'invalid windowBits');
+  assert(level >= -1 && level <= 9, 'invalid compression level');
+
+  assert(memLevel >= 1 && memLevel <= 9, 'invalid memlevel');
+
+  assert(strategy === exports.Z_FILTERED || strategy === exports.Z_HUFFMAN_ONLY || strategy === exports.Z_RLE || strategy === exports.Z_FIXED || strategy === exports.Z_DEFAULT_STRATEGY, 'invalid strategy');
+
+  this._init(level, windowBits, memLevel, strategy, dictionary);
+  this._setDictionary();
+};
+
+Zlib.prototype.params = function () {
+  throw new Error('deflateParams Not supported');
+};
+
+Zlib.prototype.reset = function () {
+  this._reset();
+  this._setDictionary();
+};
+
+Zlib.prototype._init = function (level, windowBits, memLevel, strategy, dictionary) {
+  this.level = level;
+  this.windowBits = windowBits;
+  this.memLevel = memLevel;
+  this.strategy = strategy;
+
+  this.flush = exports.Z_NO_FLUSH;
+
+  this.err = exports.Z_OK;
+
+  if (this.mode === exports.GZIP || this.mode === exports.GUNZIP) {
+    this.windowBits += 16;
+  }
+
+  if (this.mode === exports.UNZIP) {
+    this.windowBits += 32;
+  }
+
+  if (this.mode === exports.DEFLATERAW || this.mode === exports.INFLATERAW) {
+    this.windowBits = -1 * this.windowBits;
+  }
+
+  this.strm = new Zstream();
+
+  switch (this.mode) {
+    case exports.DEFLATE:
+    case exports.GZIP:
+    case exports.DEFLATERAW:
+      this.err = zlib_deflate.deflateInit2(this.strm, this.level, exports.Z_DEFLATED, this.windowBits, this.memLevel, this.strategy);
+      break;
+    case exports.INFLATE:
+    case exports.GUNZIP:
+    case exports.INFLATERAW:
+    case exports.UNZIP:
+      this.err = zlib_inflate.inflateInit2(this.strm, this.windowBits);
+      break;
+    default:
+      throw new Error('Unknown mode ' + this.mode);
+  }
+
+  if (this.err !== exports.Z_OK) {
+    this._error('Init error');
+  }
+
+  this.dictionary = dictionary;
+
+  this.write_in_progress = false;
+  this.init_done = true;
+};
+
+Zlib.prototype._setDictionary = function () {
+  if (this.dictionary == null) {
+    return;
+  }
+
+  this.err = exports.Z_OK;
+
+  switch (this.mode) {
+    case exports.DEFLATE:
+    case exports.DEFLATERAW:
+      this.err = zlib_deflate.deflateSetDictionary(this.strm, this.dictionary);
+      break;
+    default:
+      break;
+  }
+
+  if (this.err !== exports.Z_OK) {
+    this._error('Failed to set dictionary');
+  }
+};
+
+Zlib.prototype._reset = function () {
+  this.err = exports.Z_OK;
+
+  switch (this.mode) {
+    case exports.DEFLATE:
+    case exports.DEFLATERAW:
+    case exports.GZIP:
+      this.err = zlib_deflate.deflateReset(this.strm);
+      break;
+    case exports.INFLATE:
+    case exports.INFLATERAW:
+    case exports.GUNZIP:
+      this.err = zlib_inflate.inflateReset(this.strm);
+      break;
+    default:
+      break;
+  }
+
+  if (this.err !== exports.Z_OK) {
+    this._error('Failed to reset stream');
+  }
+};
+
+exports.Zlib = Zlib;
+}).call(this,require('_process'),require("buffer").Buffer)
+
+},{"_process":75,"assert":9,"buffer":17,"pako/lib/zlib/constants":61,"pako/lib/zlib/deflate.js":63,"pako/lib/zlib/inflate.js":65,"pako/lib/zlib/zstream":69}],15:[function(require,module,exports){
+(function (process){
+'use strict';
+
+var Buffer = require('buffer').Buffer;
+var Transform = require('stream').Transform;
+var binding = require('./binding');
+var util = require('util');
+var assert = require('assert').ok;
+var kMaxLength = require('buffer').kMaxLength;
+var kRangeErrorMessage = 'Cannot create final Buffer. It would be larger ' + 'than 0x' + kMaxLength.toString(16) + ' bytes';
+
+// zlib doesn't provide these, so kludge them in following the same
+// const naming scheme zlib uses.
+binding.Z_MIN_WINDOWBITS = 8;
+binding.Z_MAX_WINDOWBITS = 15;
+binding.Z_DEFAULT_WINDOWBITS = 15;
+
+// fewer than 64 bytes per chunk is stupid.
+// technically it could work with as few as 8, but even 64 bytes
+// is absurdly low.  Usually a MB or more is best.
+binding.Z_MIN_CHUNK = 64;
+binding.Z_MAX_CHUNK = Infinity;
+binding.Z_DEFAULT_CHUNK = 16 * 1024;
+
+binding.Z_MIN_MEMLEVEL = 1;
+binding.Z_MAX_MEMLEVEL = 9;
+binding.Z_DEFAULT_MEMLEVEL = 8;
+
+binding.Z_MIN_LEVEL = -1;
+binding.Z_MAX_LEVEL = 9;
+binding.Z_DEFAULT_LEVEL = binding.Z_DEFAULT_COMPRESSION;
+
+// expose all the zlib constants
+var bkeys = Object.keys(binding);
+for (var bk = 0; bk < bkeys.length; bk++) {
+  var bkey = bkeys[bk];
+  if (bkey.match(/^Z/)) {
+    Object.defineProperty(exports, bkey, {
+      enumerable: true, value: binding[bkey], writable: false
+    });
+  }
+}
+
+// translation table for return codes.
+var codes = {
+  Z_OK: binding.Z_OK,
+  Z_STREAM_END: binding.Z_STREAM_END,
+  Z_NEED_DICT: binding.Z_NEED_DICT,
+  Z_ERRNO: binding.Z_ERRNO,
+  Z_STREAM_ERROR: binding.Z_STREAM_ERROR,
+  Z_DATA_ERROR: binding.Z_DATA_ERROR,
+  Z_MEM_ERROR: binding.Z_MEM_ERROR,
+  Z_BUF_ERROR: binding.Z_BUF_ERROR,
+  Z_VERSION_ERROR: binding.Z_VERSION_ERROR
+};
+
+var ckeys = Object.keys(codes);
+for (var ck = 0; ck < ckeys.length; ck++) {
+  var ckey = ckeys[ck];
+  codes[codes[ckey]] = ckey;
+}
+
+Object.defineProperty(exports, 'codes', {
+  enumerable: true, value: Object.freeze(codes), writable: false
+});
+
+exports.Deflate = Deflate;
+exports.Inflate = Inflate;
+exports.Gzip = Gzip;
+exports.Gunzip = Gunzip;
+exports.DeflateRaw = DeflateRaw;
+exports.InflateRaw = InflateRaw;
+exports.Unzip = Unzip;
+
+exports.createDeflate = function (o) {
+  return new Deflate(o);
+};
+
+exports.createInflate = function (o) {
+  return new Inflate(o);
+};
+
+exports.createDeflateRaw = function (o) {
+  return new DeflateRaw(o);
+};
+
+exports.createInflateRaw = function (o) {
+  return new InflateRaw(o);
+};
+
+exports.createGzip = function (o) {
+  return new Gzip(o);
+};
+
+exports.createGunzip = function (o) {
+  return new Gunzip(o);
+};
+
+exports.createUnzip = function (o) {
+  return new Unzip(o);
+};
+
+// Convenience methods.
+// compress/decompress a string or buffer in one step.
+exports.deflate = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new Deflate(opts), buffer, callback);
+};
+
+exports.deflateSync = function (buffer, opts) {
+  return zlibBufferSync(new Deflate(opts), buffer);
+};
+
+exports.gzip = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new Gzip(opts), buffer, callback);
+};
+
+exports.gzipSync = function (buffer, opts) {
+  return zlibBufferSync(new Gzip(opts), buffer);
+};
+
+exports.deflateRaw = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new DeflateRaw(opts), buffer, callback);
+};
+
+exports.deflateRawSync = function (buffer, opts) {
+  return zlibBufferSync(new DeflateRaw(opts), buffer);
+};
+
+exports.unzip = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new Unzip(opts), buffer, callback);
+};
+
+exports.unzipSync = function (buffer, opts) {
+  return zlibBufferSync(new Unzip(opts), buffer);
+};
+
+exports.inflate = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new Inflate(opts), buffer, callback);
+};
+
+exports.inflateSync = function (buffer, opts) {
+  return zlibBufferSync(new Inflate(opts), buffer);
+};
+
+exports.gunzip = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new Gunzip(opts), buffer, callback);
+};
+
+exports.gunzipSync = function (buffer, opts) {
+  return zlibBufferSync(new Gunzip(opts), buffer);
+};
+
+exports.inflateRaw = function (buffer, opts, callback) {
+  if (typeof opts === 'function') {
+    callback = opts;
+    opts = {};
+  }
+  return zlibBuffer(new InflateRaw(opts), buffer, callback);
+};
+
+exports.inflateRawSync = function (buffer, opts) {
+  return zlibBufferSync(new InflateRaw(opts), buffer);
+};
+
+function zlibBuffer(engine, buffer, callback) {
+  var buffers = [];
+  var nread = 0;
+
+  engine.on('error', onError);
+  engine.on('end', onEnd);
+
+  engine.end(buffer);
+  flow();
+
+  function flow() {
+    var chunk;
+    while (null !== (chunk = engine.read())) {
+      buffers.push(chunk);
+      nread += chunk.length;
+    }
+    engine.once('readable', flow);
+  }
+
+  function onError(err) {
+    engine.removeListener('end', onEnd);
+    engine.removeListener('readable', flow);
+    callback(err);
+  }
+
+  function onEnd() {
+    var buf;
+    var err = null;
+
+    if (nread >= kMaxLength) {
+      err = new RangeError(kRangeErrorMessage);
+    } else {
+      buf = Buffer.concat(buffers, nread);
+    }
+
+    buffers = [];
+    engine.close();
+    callback(err, buf);
+  }
+}
+
+function zlibBufferSync(engine, buffer) {
+  if (typeof buffer === 'string') buffer = Buffer.from(buffer);
+
+  if (!Buffer.isBuffer(buffer)) throw new TypeError('Not a string or buffer');
+
+  var flushFlag = engine._finishFlushFlag;
+
+  return engine._processChunk(buffer, flushFlag);
+}
+
+// generic zlib
+// minimal 2-byte header
+function Deflate(opts) {
+  if (!(this instanceof Deflate)) return new Deflate(opts);
+  Zlib.call(this, opts, binding.DEFLATE);
+}
+
+function Inflate(opts) {
+  if (!(this instanceof Inflate)) return new Inflate(opts);
+  Zlib.call(this, opts, binding.INFLATE);
+}
+
+// gzip - bigger header, same deflate compression
+function Gzip(opts) {
+  if (!(this instanceof Gzip)) return new Gzip(opts);
+  Zlib.call(this, opts, binding.GZIP);
+}
+
+function Gunzip(opts) {
+  if (!(this instanceof Gunzip)) return new Gunzip(opts);
+  Zlib.call(this, opts, binding.GUNZIP);
+}
+
+// raw - no header
+function DeflateRaw(opts) {
+  if (!(this instanceof DeflateRaw)) return new DeflateRaw(opts);
+  Zlib.call(this, opts, binding.DEFLATERAW);
+}
+
+function InflateRaw(opts) {
+  if (!(this instanceof InflateRaw)) return new InflateRaw(opts);
+  Zlib.call(this, opts, binding.INFLATERAW);
+}
+
+// auto-detect header.
+function Unzip(opts) {
+  if (!(this instanceof Unzip)) return new Unzip(opts);
+  Zlib.call(this, opts, binding.UNZIP);
+}
+
+function isValidFlushFlag(flag) {
+  return flag === binding.Z_NO_FLUSH || flag === binding.Z_PARTIAL_FLUSH || flag === binding.Z_SYNC_FLUSH || flag === binding.Z_FULL_FLUSH || flag === binding.Z_FINISH || flag === binding.Z_BLOCK;
+}
+
+// the Zlib class they all inherit from
+// This thing manages the queue of requests, and returns
+// true or false if there is anything in the queue when
+// you call the .write() method.
+
+function Zlib(opts, mode) {
+  var _this = this;
+
+  this._opts = opts = opts || {};
+  this._chunkSize = opts.chunkSize || exports.Z_DEFAULT_CHUNK;
+
+  Transform.call(this, opts);
+
+  if (opts.flush && !isValidFlushFlag(opts.flush)) {
+    throw new Error('Invalid flush flag: ' + opts.flush);
+  }
+  if (opts.finishFlush && !isValidFlushFlag(opts.finishFlush)) {
+    throw new Error('Invalid flush flag: ' + opts.finishFlush);
+  }
+
+  this._flushFlag = opts.flush || binding.Z_NO_FLUSH;
+  this._finishFlushFlag = typeof opts.finishFlush !== 'undefined' ? opts.finishFlush : binding.Z_FINISH;
+
+  if (opts.chunkSize) {
+    if (opts.chunkSize < exports.Z_MIN_CHUNK || opts.chunkSize > exports.Z_MAX_CHUNK) {
+      throw new Error('Invalid chunk size: ' + opts.chunkSize);
+    }
+  }
+
+  if (opts.windowBits) {
+    if (opts.windowBits < exports.Z_MIN_WINDOWBITS || opts.windowBits > exports.Z_MAX_WINDOWBITS) {
+      throw new Error('Invalid windowBits: ' + opts.windowBits);
+    }
+  }
+
+  if (opts.level) {
+    if (opts.level < exports.Z_MIN_LEVEL || opts.level > exports.Z_MAX_LEVEL) {
+      throw new Error('Invalid compression level: ' + opts.level);
+    }
+  }
+
+  if (opts.memLevel) {
+    if (opts.memLevel < exports.Z_MIN_MEMLEVEL || opts.memLevel > exports.Z_MAX_MEMLEVEL) {
+      throw new Error('Invalid memLevel: ' + opts.memLevel);
+    }
+  }
+
+  if (opts.strategy) {
+    if (opts.strategy != exports.Z_FILTERED && opts.strategy != exports.Z_HUFFMAN_ONLY && opts.strategy != exports.Z_RLE && opts.strategy != exports.Z_FIXED && opts.strategy != exports.Z_DEFAULT_STRATEGY) {
+      throw new Error('Invalid strategy: ' + opts.strategy);
+    }
+  }
+
+  if (opts.dictionary) {
+    if (!Buffer.isBuffer(opts.dictionary)) {
+      throw new Error('Invalid dictionary: it should be a Buffer instance');
+    }
+  }
+
+  this._handle = new binding.Zlib(mode);
+
+  var self = this;
+  this._hadError = false;
+  this._handle.onerror = function (message, errno) {
+    // there is no way to cleanly recover.
+    // continuing only obscures problems.
+    _close(self);
+    self._hadError = true;
+
+    var error = new Error(message);
+    error.errno = errno;
+    error.code = exports.codes[errno];
+    self.emit('error', error);
+  };
+
+  var level = exports.Z_DEFAULT_COMPRESSION;
+  if (typeof opts.level === 'number') level = opts.level;
+
+  var strategy = exports.Z_DEFAULT_STRATEGY;
+  if (typeof opts.strategy === 'number') strategy = opts.strategy;
+
+  this._handle.init(opts.windowBits || exports.Z_DEFAULT_WINDOWBITS, level, opts.memLevel || exports.Z_DEFAULT_MEMLEVEL, strategy, opts.dictionary);
+
+  this._buffer = Buffer.allocUnsafe(this._chunkSize);
+  this._offset = 0;
+  this._level = level;
+  this._strategy = strategy;
+
+  this.once('end', this.close);
+
+  Object.defineProperty(this, '_closed', {
+    get: function () {
+      return !_this._handle;
+    },
+    configurable: true,
+    enumerable: true
+  });
+}
+
+util.inherits(Zlib, Transform);
+
+Zlib.prototype.params = function (level, strategy, callback) {
+  if (level < exports.Z_MIN_LEVEL || level > exports.Z_MAX_LEVEL) {
+    throw new RangeError('Invalid compression level: ' + level);
+  }
+  if (strategy != exports.Z_FILTERED && strategy != exports.Z_HUFFMAN_ONLY && strategy != exports.Z_RLE && strategy != exports.Z_FIXED && strategy != exports.Z_DEFAULT_STRATEGY) {
+    throw new TypeError('Invalid strategy: ' + strategy);
+  }
+
+  if (this._level !== level || this._strategy !== strategy) {
+    var self = this;
+    this.flush(binding.Z_SYNC_FLUSH, function () {
+      assert(self._handle, 'zlib binding closed');
+      self._handle.params(level, strategy);
+      if (!self._hadError) {
+        self._level = level;
+        self._strategy = strategy;
+        if (callback) callback();
+      }
+    });
+  } else {
+    process.nextTick(callback);
+  }
+};
+
+Zlib.prototype.reset = function () {
+  assert(this._handle, 'zlib binding closed');
+  return this._handle.reset();
+};
+
+// This is the _flush function called by the transform class,
+// internally, when the last chunk has been written.
+Zlib.prototype._flush = function (callback) {
+  this._transform(Buffer.alloc(0), '', callback);
+};
+
+Zlib.prototype.flush = function (kind, callback) {
+  var _this2 = this;
+
+  var ws = this._writableState;
+
+  if (typeof kind === 'function' || kind === undefined && !callback) {
+    callback = kind;
+    kind = binding.Z_FULL_FLUSH;
+  }
+
+  if (ws.ended) {
+    if (callback) process.nextTick(callback);
+  } else if (ws.ending) {
+    if (callback) this.once('end', callback);
+  } else if (ws.needDrain) {
+    if (callback) {
+      this.once('drain', function () {
+        return _this2.flush(kind, callback);
+      });
+    }
+  } else {
+    this._flushFlag = kind;
+    this.write(Buffer.alloc(0), '', callback);
+  }
+};
+
+Zlib.prototype.close = function (callback) {
+  _close(this, callback);
+  process.nextTick(emitCloseNT, this);
+};
+
+function _close(engine, callback) {
+  if (callback) process.nextTick(callback);
+
+  // Caller may invoke .close after a zlib error (which will null _handle).
+  if (!engine._handle) return;
+
+  engine._handle.close();
+  engine._handle = null;
+}
+
+function emitCloseNT(self) {
+  self.emit('close');
+}
+
+Zlib.prototype._transform = function (chunk, encoding, cb) {
+  var flushFlag;
+  var ws = this._writableState;
+  var ending = ws.ending || ws.ended;
+  var last = ending && (!chunk || ws.length === chunk.length);
+
+  if (chunk !== null && !Buffer.isBuffer(chunk)) return cb(new Error('invalid input'));
+
+  if (!this._handle) return cb(new Error('zlib binding closed'));
+
+  // If it's the last chunk, or a final flush, we use the Z_FINISH flush flag
+  // (or whatever flag was provided using opts.finishFlush).
+  // If it's explicitly flushing at some other time, then we use
+  // Z_FULL_FLUSH. Otherwise, use Z_NO_FLUSH for maximum compression
+  // goodness.
+  if (last) flushFlag = this._finishFlushFlag;else {
+    flushFlag = this._flushFlag;
+    // once we've flushed the last of the queue, stop flushing and
+    // go back to the normal behavior.
+    if (chunk.length >= ws.length) {
+      this._flushFlag = this._opts.flush || binding.Z_NO_FLUSH;
+    }
+  }
+
+  this._processChunk(chunk, flushFlag, cb);
+};
+
+Zlib.prototype._processChunk = function (chunk, flushFlag, cb) {
+  var availInBefore = chunk && chunk.length;
+  var availOutBefore = this._chunkSize - this._offset;
+  var inOff = 0;
+
+  var self = this;
+
+  var async = typeof cb === 'function';
+
+  if (!async) {
+    var buffers = [];
+    var nread = 0;
+
+    var error;
+    this.on('error', function (er) {
+      error = er;
+    });
+
+    assert(this._handle, 'zlib binding closed');
+    do {
+      var res = this._handle.writeSync(flushFlag, chunk, // in
+      inOff, // in_off
+      availInBefore, // in_len
+      this._buffer, // out
+      this._offset, //out_off
+      availOutBefore); // out_len
+    } while (!this._hadError && callback(res[0], res[1]));
+
+    if (this._hadError) {
+      throw error;
+    }
+
+    if (nread >= kMaxLength) {
+      _close(this);
+      throw new RangeError(kRangeErrorMessage);
+    }
+
+    var buf = Buffer.concat(buffers, nread);
+    _close(this);
+
+    return buf;
+  }
+
+  assert(this._handle, 'zlib binding closed');
+  var req = this._handle.write(flushFlag, chunk, // in
+  inOff, // in_off
+  availInBefore, // in_len
+  this._buffer, // out
+  this._offset, //out_off
+  availOutBefore); // out_len
+
+  req.buffer = chunk;
+  req.callback = callback;
+
+  function callback(availInAfter, availOutAfter) {
+    // When the callback is used in an async write, the callback's
+    // context is the `req` object that was created. The req object
+    // is === this._handle, and that's why it's important to null
+    // out the values after they are done being used. `this._handle`
+    // can stay in memory longer than the callback and buffer are needed.
+    if (this) {
+      this.buffer = null;
+      this.callback = null;
+    }
+
+    if (self._hadError) return;
+
+    var have = availOutBefore - availOutAfter;
+    assert(have >= 0, 'have should not go down');
+
+    if (have > 0) {
+      var out = self._buffer.slice(self._offset, self._offset + have);
+      self._offset += have;
+      // serve some output to the consumer.
+      if (async) {
+        self.push(out);
+      } else {
+        buffers.push(out);
+        nread += out.length;
+      }
+    }
+
+    // exhausted the output buffer, or used all the input create a new one.
+    if (availOutAfter === 0 || self._offset >= self._chunkSize) {
+      availOutBefore = self._chunkSize;
+      self._offset = 0;
+      self._buffer = Buffer.allocUnsafe(self._chunkSize);
+    }
+
+    if (availOutAfter === 0) {
+      // Not actually done.  Need to reprocess.
+      // Also, update the availInBefore to the availInAfter value,
+      // so that if we have to hit it a third (fourth, etc.) time,
+      // it'll have the correct byte counts.
+      inOff += availInBefore - availInAfter;
+      availInBefore = availInAfter;
+
+      if (!async) return true;
+
+      var newReq = self._handle.write(flushFlag, chunk, inOff, availInBefore, self._buffer, self._offset, self._chunkSize);
+      newReq.callback = callback; // this same function
+      newReq.buffer = chunk;
+      return;
+    }
+
+    if (!async) return false;
+
+    // finished with the chunk.
+    cb();
+  }
+};
+
+util.inherits(Deflate, Zlib);
+util.inherits(Inflate, Zlib);
+util.inherits(Gzip, Zlib);
+util.inherits(Gunzip, Zlib);
+util.inherits(DeflateRaw, Zlib);
+util.inherits(InflateRaw, Zlib);
+util.inherits(Unzip, Zlib);
+}).call(this,require('_process'))
+
+},{"./binding":14,"_process":75,"assert":9,"buffer":17,"stream":86,"util":93}],16:[function(require,module,exports){
+arguments[4][13][0].apply(exports,arguments)
+},{"dup":13}],17:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -2991,8 +5322,8 @@ arguments[4][10][0].apply(exports,arguments)
 
 'use strict'
 
-var base64 = _dereq_('base64-js')
-var ieee754 = _dereq_('ieee754')
+var base64 = require('base64-js')
+var ieee754 = require('ieee754')
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
@@ -4759,7 +7090,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":7,"ieee754":37}],13:[function(_dereq_,module,exports){
+},{"base64-js":10,"ieee754":49}],18:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5284,9 +7615,9 @@ function functionBindPolyfill(context) {
   };
 }
 
-},{}],14:[function(_dereq_,module,exports){
+},{}],19:[function(require,module,exports){
 (function (setImmediate,clearImmediate){
-var nextTick = _dereq_('process/browser.js').nextTick;
+var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
 var slice = Array.prototype.slice;
 var immediateIds = {};
@@ -5362,299 +7693,4213 @@ exports.setImmediate = typeof setImmediate === "function" ? setImmediate : funct
 exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate : function(id) {
   delete immediateIds[id];
 };
-}).call(this,_dereq_("timers").setImmediate,_dereq_("timers").clearImmediate)
+}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
 
-},{"process/browser.js":99,"timers":14}],15:[function(_dereq_,module,exports){
-_dereq_('../modules/web.immediate');
-module.exports = _dereq_('../modules/_core').setImmediate;
-},{"../modules/_core":19,"../modules/web.immediate":35}],16:[function(_dereq_,module,exports){
-module.exports = function(it){
-  if(typeof it != 'function')throw TypeError(it + ' is not a function!');
-  return it;
-};
-},{}],17:[function(_dereq_,module,exports){
-var isObject = _dereq_('./_is-object');
-module.exports = function(it){
-  if(!isObject(it))throw TypeError(it + ' is not an object!');
-  return it;
-};
-},{"./_is-object":30}],18:[function(_dereq_,module,exports){
-var toString = {}.toString;
+},{"process/browser.js":75,"timers":19}],20:[function(require,module,exports){
+(function (Buffer){
+/*!
+ *  Copyright 2008 Fair Oaks Labs, Inc.
+ *  All rights reserved.
+ */
 
-module.exports = function(it){
-  return toString.call(it).slice(8, -1);
-};
-},{}],19:[function(_dereq_,module,exports){
-var core = module.exports = {version: '2.3.0'};
-if(typeof __e == 'number')__e = core; // eslint-disable-line no-undef
-},{}],20:[function(_dereq_,module,exports){
-// optional / simple context binding
-var aFunction = _dereq_('./_a-function');
-module.exports = function(fn, that, length){
-  aFunction(fn);
-  if(that === undefined)return fn;
-  switch(length){
-    case 1: return function(a){
-      return fn.call(that, a);
-    };
-    case 2: return function(a, b){
-      return fn.call(that, a, b);
-    };
-    case 3: return function(a, b, c){
-      return fn.call(that, a, b, c);
-    };
-  }
-  return function(/* ...args */){
-    return fn.apply(that, arguments);
+// Utility object:  Encode/Decode C-style binary primitives to/from octet arrays
+function BufferPack() {
+  // Module-level (private) variables
+  var el,  bBE = false, m = this;
+
+  // Raw byte arrays
+  m._DeArray = function (a, p, l) {
+    return [a.slice(p,p+l)];
   };
-};
-},{"./_a-function":16}],21:[function(_dereq_,module,exports){
-// Thank's IE8 for his funny defineProperty
-module.exports = !_dereq_('./_fails')(function(){
-  return Object.defineProperty({}, 'a', {get: function(){ return 7; }}).a != 7;
-});
-},{"./_fails":24}],22:[function(_dereq_,module,exports){
-var isObject = _dereq_('./_is-object')
-  , document = _dereq_('./_global').document
-  // in old IE typeof document.createElement is 'object'
-  , is = isObject(document) && isObject(document.createElement);
-module.exports = function(it){
-  return is ? document.createElement(it) : {};
-};
-},{"./_global":25,"./_is-object":30}],23:[function(_dereq_,module,exports){
-var global    = _dereq_('./_global')
-  , core      = _dereq_('./_core')
-  , ctx       = _dereq_('./_ctx')
-  , hide      = _dereq_('./_hide')
-  , PROTOTYPE = 'prototype';
+  m._EnArray = function (a, p, l, v) {
+    for (var i = 0; i < l; a[p+i] = v[i]?v[i]:0, i++);
+  };
 
-var $export = function(type, name, source){
-  var IS_FORCED = type & $export.F
-    , IS_GLOBAL = type & $export.G
-    , IS_STATIC = type & $export.S
-    , IS_PROTO  = type & $export.P
-    , IS_BIND   = type & $export.B
-    , IS_WRAP   = type & $export.W
-    , exports   = IS_GLOBAL ? core : core[name] || (core[name] = {})
-    , expProto  = exports[PROTOTYPE]
-    , target    = IS_GLOBAL ? global : IS_STATIC ? global[name] : (global[name] || {})[PROTOTYPE]
-    , key, own, out;
-  if(IS_GLOBAL)source = name;
-  for(key in source){
-    // contains in native
-    own = !IS_FORCED && target && target[key] !== undefined;
-    if(own && key in exports)continue;
-    // export native or passed
-    out = own ? target[key] : source[key];
-    // prevent global pollution for namespaces
-    exports[key] = IS_GLOBAL && typeof target[key] != 'function' ? source[key]
-    // bind timers to global for call from export context
-    : IS_BIND && own ? ctx(out, global)
-    // wrap global constructors for prevent change them in library
-    : IS_WRAP && target[key] == out ? (function(C){
-      var F = function(a, b, c){
-        if(this instanceof C){
-          switch(arguments.length){
-            case 0: return new C;
-            case 1: return new C(a);
-            case 2: return new C(a, b);
-          } return new C(a, b, c);
-        } return C.apply(this, arguments);
-      };
-      F[PROTOTYPE] = C[PROTOTYPE];
-      return F;
-    // make static versions for prototype methods
-    })(out) : IS_PROTO && typeof out == 'function' ? ctx(Function.call, out) : out;
-    // export proto methods to core.%CONSTRUCTOR%.methods.%NAME%
-    if(IS_PROTO){
-      (exports.virtual || (exports.virtual = {}))[key] = out;
-      // export proto methods to core.%CONSTRUCTOR%.prototype.%NAME%
-      if(type & $export.R && expProto && !expProto[key])hide(expProto, key, out);
+  // ASCII characters
+  m._DeChar = function (a, p) {
+    return String.fromCharCode(a[p]);
+  };
+  m._EnChar = function (a, p, v) {
+    a[p] = v.charCodeAt(0);
+  };
+
+  // Little-endian (un)signed N-byte integers
+  m._DeInt = function (a, p) {
+    var lsb = bBE?(el.len-1):0, nsb = bBE?-1:1, stop = lsb+nsb*el.len, rv, i, f;
+    for (rv = 0, i = lsb, f = 1; i != stop; rv+=(a[p+i]*f), i+=nsb, f*=256);
+    if (el.bSigned && (rv & Math.pow(2, el.len*8-1))) {
+      rv -= Math.pow(2, el.len*8);
     }
-  }
-};
-// type bitmap
-$export.F = 1;   // forced
-$export.G = 2;   // global
-$export.S = 4;   // static
-$export.P = 8;   // proto
-$export.B = 16;  // bind
-$export.W = 32;  // wrap
-$export.U = 64;  // safe
-$export.R = 128; // real proto method for `library` 
-module.exports = $export;
-},{"./_core":19,"./_ctx":20,"./_global":25,"./_hide":26}],24:[function(_dereq_,module,exports){
-module.exports = function(exec){
-  try {
-    return !!exec();
-  } catch(e){
-    return true;
-  }
-};
-},{}],25:[function(_dereq_,module,exports){
-// https://github.com/zloirock/core-js/issues/86#issuecomment-115759028
-var global = module.exports = typeof window != 'undefined' && window.Math == Math
-  ? window : typeof self != 'undefined' && self.Math == Math ? self : Function('return this')();
-if(typeof __g == 'number')__g = global; // eslint-disable-line no-undef
-},{}],26:[function(_dereq_,module,exports){
-var dP         = _dereq_('./_object-dp')
-  , createDesc = _dereq_('./_property-desc');
-module.exports = _dereq_('./_descriptors') ? function(object, key, value){
-  return dP.f(object, key, createDesc(1, value));
-} : function(object, key, value){
-  object[key] = value;
-  return object;
-};
-},{"./_descriptors":21,"./_object-dp":31,"./_property-desc":32}],27:[function(_dereq_,module,exports){
-module.exports = _dereq_('./_global').document && document.documentElement;
-},{"./_global":25}],28:[function(_dereq_,module,exports){
-module.exports = !_dereq_('./_descriptors') && !_dereq_('./_fails')(function(){
-  return Object.defineProperty(_dereq_('./_dom-create')('div'), 'a', {get: function(){ return 7; }}).a != 7;
-});
-},{"./_descriptors":21,"./_dom-create":22,"./_fails":24}],29:[function(_dereq_,module,exports){
-// fast apply, http://jsperf.lnkit.com/fast-apply/5
-module.exports = function(fn, args, that){
-  var un = that === undefined;
-  switch(args.length){
-    case 0: return un ? fn()
-                      : fn.call(that);
-    case 1: return un ? fn(args[0])
-                      : fn.call(that, args[0]);
-    case 2: return un ? fn(args[0], args[1])
-                      : fn.call(that, args[0], args[1]);
-    case 3: return un ? fn(args[0], args[1], args[2])
-                      : fn.call(that, args[0], args[1], args[2]);
-    case 4: return un ? fn(args[0], args[1], args[2], args[3])
-                      : fn.call(that, args[0], args[1], args[2], args[3]);
-  } return              fn.apply(that, args);
-};
-},{}],30:[function(_dereq_,module,exports){
-module.exports = function(it){
-  return typeof it === 'object' ? it !== null : typeof it === 'function';
-};
-},{}],31:[function(_dereq_,module,exports){
-var anObject       = _dereq_('./_an-object')
-  , IE8_DOM_DEFINE = _dereq_('./_ie8-dom-define')
-  , toPrimitive    = _dereq_('./_to-primitive')
-  , dP             = Object.defineProperty;
+    return rv;
+  };
+  m._EnInt = function (a, p, v) {
+    var lsb = bBE?(el.len-1):0, nsb = bBE?-1:1, stop = lsb+nsb*el.len, i;
+    v = (v<el.min)?el.min:(v>el.max)?el.max:v;
+    for (i = lsb; i != stop; a[p+i]=v&0xff, i+=nsb, v>>=8);
+  };
 
-exports.f = _dereq_('./_descriptors') ? Object.defineProperty : function defineProperty(O, P, Attributes){
-  anObject(O);
-  P = toPrimitive(P, true);
-  anObject(Attributes);
-  if(IE8_DOM_DEFINE)try {
-    return dP(O, P, Attributes);
-  } catch(e){ /* empty */ }
-  if('get' in Attributes || 'set' in Attributes)throw TypeError('Accessors not supported!');
-  if('value' in Attributes)O[P] = Attributes.value;
-  return O;
-};
-},{"./_an-object":17,"./_descriptors":21,"./_ie8-dom-define":28,"./_to-primitive":34}],32:[function(_dereq_,module,exports){
-module.exports = function(bitmap, value){
-  return {
-    enumerable  : !(bitmap & 1),
-    configurable: !(bitmap & 2),
-    writable    : !(bitmap & 4),
-    value       : value
+  // ASCII character strings
+  m._DeString = function (a, p, l) {
+    for (var rv = new Array(l), i = 0; i < l; rv[i] = String.fromCharCode(a[p+i]), i++);
+    return rv.join('');
   };
-};
-},{}],33:[function(_dereq_,module,exports){
-var ctx                = _dereq_('./_ctx')
-  , invoke             = _dereq_('./_invoke')
-  , html               = _dereq_('./_html')
-  , cel                = _dereq_('./_dom-create')
-  , global             = _dereq_('./_global')
-  , process            = global.process
-  , setTask            = global.setImmediate
-  , clearTask          = global.clearImmediate
-  , MessageChannel     = global.MessageChannel
-  , counter            = 0
-  , queue              = {}
-  , ONREADYSTATECHANGE = 'onreadystatechange'
-  , defer, channel, port;
-var run = function(){
-  var id = +this;
-  if(queue.hasOwnProperty(id)){
-    var fn = queue[id];
-    delete queue[id];
-    fn();
+  m._EnString = function (a, p, l, v) {
+    for (var t, i = 0; i < l; a[p+i] = (t=v.charCodeAt(i))?t:0, i++);
+  };
+
+  // ASCII character strings null terminated
+  m._DeNullString = function (a, p, l, v) {
+    var str = m._DeString(a, p, l, v);
+    return str.substring(0, str.length - 1);
+  };
+
+  // Little-endian N-bit IEEE 754 floating point
+  m._De754 = function (a, p) {
+    var s, e, m, i, d, nBits, mLen, eLen, eBias, eMax;
+    mLen = el.mLen, eLen = el.len*8-el.mLen-1, eMax = (1<<eLen)-1, eBias = eMax>>1;
+
+    i = bBE?0:(el.len-1); d = bBE?1:-1; s = a[p+i]; i+=d; nBits = -7;
+    for (e = s&((1<<(-nBits))-1), s>>=(-nBits), nBits += eLen; nBits > 0; e=e*256+a[p+i], i+=d, nBits-=8);
+    for (m = e&((1<<(-nBits))-1), e>>=(-nBits), nBits += mLen; nBits > 0; m=m*256+a[p+i], i+=d, nBits-=8);
+
+    switch (e) {
+    case 0:
+      // Zero, or denormalized number
+      e = 1-eBias;
+      break;
+    case eMax:
+      // NaN, or +/-Infinity
+      return m?NaN:((s?-1:1)*Infinity);
+    default:
+      // Normalized number
+      m = m + Math.pow(2, mLen);
+      e = e - eBias;
+      break;
+    }
+    return (s?-1:1) * m * Math.pow(2, e-mLen);
+  };
+  m._En754 = function (a, p, v) {
+    var s, e, m, i, d, c, mLen, eLen, eBias, eMax;
+    mLen = el.mLen, eLen = el.len*8-el.mLen-1, eMax = (1<<eLen)-1, eBias = eMax>>1;
+
+    s = v<0?1:0;
+    v = Math.abs(v);
+    if (isNaN(v) || (v == Infinity)) {
+      m = isNaN(v)?1:0;
+      e = eMax;
+    } else {
+      e = Math.floor(Math.log(v)/Math.LN2);			// Calculate log2 of the value
+
+      if (v*(c = Math.pow(2, -e)) < 1) {
+        e--; c*=2;						// Math.log() isn't 100% reliable
+      }
+
+      // Round by adding 1/2 the significand's LSD
+      if (e+eBias >= 1) {
+        v += el.rt/c;                                           // Normalized:  mLen significand digits
+      } else {
+        v += el.rt*Math.pow(2, 1-eBias);                        // Denormalized:  <= mLen significand digits
+      }
+
+      if (v*c >= 2) {
+        e++; c/=2;						// Rounding can increment the exponent
+      }
+
+      if (e+eBias >= eMax) {
+        // Overflow
+        m = 0;
+        e = eMax;
+      } else if (e+eBias >= 1) {
+        // Normalized - term order matters, as Math.pow(2, 52-e) and v*Math.pow(2, 52) can overflow
+        m = (v*c-1)*Math.pow(2, mLen);
+        e = e + eBias;
+      } else {
+        // Denormalized - also catches the '0' case, somewhat by chance
+        m = v*Math.pow(2, eBias-1)*Math.pow(2, mLen);
+        e = 0;
+      }
+    }
+
+    for (i = bBE?(el.len-1):0, d=bBE?-1:1; mLen >= 8; a[p+i]=m&0xff, i+=d, m/=256, mLen-=8);
+    for (e=(e<<mLen)|m, eLen+=mLen; eLen > 0; a[p+i]=e&0xff, i+=d, e/=256, eLen-=8);
+    a[p+i-d] |= s*128;
+  };
+
+  // Class data
+  m._sPattern = '(\\d+)?([AxcbBhHsSfdiIlL])(\\(([a-zA-Z0-9]+)\\))?';
+  m._lenLut = {'A': 1, 'x': 1, 'c': 1, 'b': 1, 'B': 1, 'h': 2, 'H': 2, 's': 1,
+               'S': 1, 'f': 4, 'd': 8, 'i': 4, 'I': 4, 'l': 4, 'L': 4};
+  m._elLut = {'A': {en: m._EnArray, de: m._DeArray},
+              's': {en: m._EnString, de: m._DeString},
+              'S': {en: m._EnString, de: m._DeNullString},
+              'c': {en: m._EnChar, de: m._DeChar},
+              'b': {en: m._EnInt, de: m._DeInt, len: 1, bSigned: true, min: -Math.pow(2, 7), max: Math.pow(2, 7) - 1},
+              'B': {en: m._EnInt, de: m._DeInt, len: 1, bSigned: false, min: 0, max: Math.pow(2, 8) - 1},
+              'h': {en: m._EnInt, de: m._DeInt, len: 2, bSigned: true, min: -Math.pow(2, 15), max: Math.pow(2, 15) - 1},
+              'H': {en: m._EnInt, de: m._DeInt, len: 2, bSigned: false, min: 0, max: Math.pow(2, 16) - 1},
+              'i': {en: m._EnInt, de: m._DeInt, len: 4, bSigned: true, min: -Math.pow(2, 31), max: Math.pow(2, 31) - 1},
+              'I': {en: m._EnInt, de: m._DeInt, len: 4, bSigned: false, min: 0, max: Math.pow(2, 32) - 1},
+              'l': {en: m._EnInt, de: m._DeInt, len: 4, bSigned: true, min: -Math.pow(2, 31), max: Math.pow(2, 31) - 1},
+              'L': {en: m._EnInt, de: m._DeInt, len: 4, bSigned: false, min: 0, max: Math.pow(2, 32) - 1},
+              'f': {en: m._En754, de: m._De754, len: 4, mLen: 23, rt: Math.pow(2, -24) - Math.pow(2, -77)},
+              'd': {en: m._En754, de: m._De754, len: 8, mLen: 52, rt: 0}};
+
+  // Unpack a series of n elements of size s from array a at offset p with fxn
+  m._UnpackSeries = function (n, s, a, p) {
+    for (var fxn = el.de, rv = [], i = 0; i < n; rv.push(fxn(a, p+i*s)), i++);
+    return rv;
+  };
+
+  // Pack a series of n elements of size s from array v at offset i to array a at offset p with fxn
+  m._PackSeries = function (n, s, a, p, v, i) {
+    for (var fxn = el.en, o = 0; o < n; fxn(a, p+o*s, v[i+o]), o++);
+  };
+
+  m._zip = function (keys, values) {
+    var result = {};
+
+    for (var i = 0; i < keys.length; i++) {
+      result[keys[i]] = values[i];
+    }
+
+    return result;
   }
-};
-var listener = function(event){
-  run.call(event.data);
-};
-// Node.js 0.9+ & IE10+ has setImmediate, otherwise:
-if(!setTask || !clearTask){
-  setTask = function setImmediate(fn){
-    var args = [], i = 1;
-    while(arguments.length > i)args.push(arguments[i++]);
-    queue[++counter] = function(){
-      invoke(typeof fn == 'function' ? fn : Function(fn), args);
-    };
-    defer(counter);
-    return counter;
+
+  // Unpack the octet array a, beginning at offset p, according to the fmt string
+  m.unpack = function (fmt, a, p) {
+    // Set the private bBE flag based on the format string - assume big-endianness
+    bBE = (fmt.charAt(0) != '<');
+
+    p = p?p:0;
+    var re = new RegExp(this._sPattern, 'g');
+    var m;
+    var n;
+    var s;
+    var rk = [];
+    var rv = [];
+    
+    while (m = re.exec(fmt)) {
+      n = ((m[1]==undefined)||(m[1]==''))?1:parseInt(m[1]);
+
+      if(m[2] === 'S') { // Null term string support
+        n = 0; // Need to deal with empty  null term strings
+        while(a[p + n] !== 0) {
+          n++;
+        }
+        n++; // Add one for null byte
+      }
+
+      s = this._lenLut[m[2]];
+
+      if ((p + n*s) > a.length) {
+        return undefined;
+      }
+
+      switch (m[2]) {
+      case 'A': case 's': case 'S':
+        rv.push(this._elLut[m[2]].de(a, p, n));
+        break;
+      case 'c': case 'b': case 'B': case 'h': case 'H':
+      case 'i': case 'I': case 'l': case 'L': case 'f': case 'd':
+        el = this._elLut[m[2]];
+        rv.push(this._UnpackSeries(n, s, a, p));
+        break;
+      }
+
+      rk.push(m[4]); // Push key on to array
+
+      p += n*s;
+    }   
+
+    rv = Array.prototype.concat.apply([], rv)
+
+    if(rk.indexOf(undefined) !== -1) {
+      return rv;
+    } else {
+      return this._zip(rk, rv);
+    }
   };
-  clearTask = function clearImmediate(id){
-    delete queue[id];
+
+  // Pack the supplied values into the octet array a, beginning at offset p, according to the fmt string
+  m.packTo = function (fmt, a, p, values) {
+    // Set the private bBE flag based on the format string - assume big-endianness
+    bBE = (fmt.charAt(0) != '<');
+
+    var re = new RegExp(this._sPattern, 'g');
+    var m;
+    var n;
+    var s;
+    var i = 0;
+    var j;
+
+    while (m = re.exec(fmt)) {
+      n = ((m[1]==undefined)||(m[1]==''))?1:parseInt(m[1]);
+
+      // Null term string support
+      if(m[2] === 'S') {
+        n = values[i].length + 1; // Add one for null byte
+      }
+
+      s = this._lenLut[m[2]];
+
+      if ((p + n*s) > a.length) {
+        return false;
+      }
+
+      switch (m[2]) {
+      case 'A': case 's': case 'S':
+        if ((i + 1) > values.length) { return false; }
+        this._elLut[m[2]].en(a, p, n, values[i]);
+        i += 1;
+        break;
+      case 'c': case 'b': case 'B': case 'h': case 'H':
+      case 'i': case 'I': case 'l': case 'L': case 'f': case 'd':
+        el = this._elLut[m[2]];
+        if ((i + n) > values.length) { return false; }
+        this._PackSeries(n, s, a, p, values, i);
+        i += n;
+        break;
+      case 'x':
+        for (j = 0; j < n; j++) { a[p+j] = 0; }
+        break;
+      }
+      p += n*s;
+    }
+
+    return a;
   };
-  // Node.js 0.8-
-  if(_dereq_('./_cof')(process) == 'process'){
-    defer = function(id){
-      process.nextTick(ctx(run, id, 1));
-    };
-  // Browsers with MessageChannel, includes WebWorkers
-  } else if(MessageChannel){
-    channel = new MessageChannel;
-    port    = channel.port2;
-    channel.port1.onmessage = listener;
-    defer = ctx(port.postMessage, port, 1);
-  // Browsers with postMessage, skip WebWorkers
-  // IE8 has postMessage, but it's sync & typeof its postMessage is 'object'
-  } else if(global.addEventListener && typeof postMessage == 'function' && !global.importScripts){
-    defer = function(id){
-      global.postMessage(id + '', '*');
-    };
-    global.addEventListener('message', listener, false);
-  // IE8-
-  } else if(ONREADYSTATECHANGE in cel('script')){
-    defer = function(id){
-      html.appendChild(cel('script'))[ONREADYSTATECHANGE] = function(){
-        html.removeChild(this);
-        run.call(id);
-      };
-    };
-  // Rest old browsers
-  } else {
-    defer = function(id){
-      setTimeout(ctx(run, id, 1), 0);
-    };
-  }
-}
-module.exports = {
-  set:   setTask,
-  clear: clearTask
+
+  // Pack the supplied values into a new octet array, according to the fmt string
+  m.pack = function (fmt, values) {
+    return this.packTo(fmt, new Buffer(this.calcLength(fmt, values)), 0, values);
+  };
+
+  // Determine the number of bytes represented by the format string
+  m.calcLength = function (format, values) {
+    var re = new RegExp(this._sPattern, 'g'), m, sum = 0, i = 0;
+    while (m = re.exec(format)) {
+      var n = (((m[1]==undefined)||(m[1]==''))?1:parseInt(m[1])) * this._lenLut[m[2]];
+
+      if(m[2] === 'S') {
+        n = values[i].length + 1; // Add one for null byte
+      }
+
+      sum += n;
+      i++;
+    }
+    return sum;
+  };
 };
-},{"./_cof":18,"./_ctx":20,"./_dom-create":22,"./_global":25,"./_html":27,"./_invoke":29}],34:[function(_dereq_,module,exports){
-// 7.1.1 ToPrimitive(input [, PreferredType])
-var isObject = _dereq_('./_is-object');
-// instead of the ES6 spec version, we didn't implement @@toPrimitive case
-// and the second argument - flag - preferred type is a string
-module.exports = function(it, S){
-  if(!isObject(it))return it;
-  var fn, val;
-  if(S && typeof (fn = it.toString) == 'function' && !isObject(val = fn.call(it)))return val;
-  if(typeof (fn = it.valueOf) == 'function' && !isObject(val = fn.call(it)))return val;
-  if(!S && typeof (fn = it.toString) == 'function' && !isObject(val = fn.call(it)))return val;
-  throw TypeError("Can't convert object to primitive value");
-};
-},{"./_is-object":30}],35:[function(_dereq_,module,exports){
-var $export = _dereq_('./_export')
-  , $task   = _dereq_('./_task');
-$export($export.G + $export.B, {
-  setImmediate:   $task.set,
-  clearImmediate: $task.clear
+
+module.exports = new BufferPack();
+
+}).call(this,require("buffer").Buffer)
+
+},{"buffer":17}],21:[function(require,module,exports){
+/*
+ Copyright 2013-2014 Daniel Wirtz <dcode@dcode.io>
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
+/**
+ * @license bytebuffer.js (c) 2015 Daniel Wirtz <dcode@dcode.io>
+ * Backing buffer: ArrayBuffer, Accessor: Uint8Array
+ * Released under the Apache License, Version 2.0
+ * see: https://github.com/dcodeIO/bytebuffer.js for details
+ */
+(function(global, factory) {
+
+    /* AMD */ if (typeof define === 'function' && define["amd"])
+        define(["long"], factory);
+    /* CommonJS */ else if (typeof require === 'function' && typeof module === "object" && module && module["exports"])
+        module['exports'] = (function() {
+            var Long; try { Long = require("long"); } catch (e) {}
+            return factory(Long);
+        })();
+    /* Global */ else
+        (global["dcodeIO"] = global["dcodeIO"] || {})["ByteBuffer"] = factory(global["dcodeIO"]["Long"]);
+
+})(this, function(Long) {
+    "use strict";
+
+    /**
+     * Constructs a new ByteBuffer.
+     * @class The swiss army knife for binary data in JavaScript.
+     * @exports ByteBuffer
+     * @constructor
+     * @param {number=} capacity Initial capacity. Defaults to {@link ByteBuffer.DEFAULT_CAPACITY}.
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @expose
+     */
+    var ByteBuffer = function(capacity, littleEndian, noAssert) {
+        if (typeof capacity === 'undefined')
+            capacity = ByteBuffer.DEFAULT_CAPACITY;
+        if (typeof littleEndian === 'undefined')
+            littleEndian = ByteBuffer.DEFAULT_ENDIAN;
+        if (typeof noAssert === 'undefined')
+            noAssert = ByteBuffer.DEFAULT_NOASSERT;
+        if (!noAssert) {
+            capacity = capacity | 0;
+            if (capacity < 0)
+                throw RangeError("Illegal capacity");
+            littleEndian = !!littleEndian;
+            noAssert = !!noAssert;
+        }
+
+        /**
+         * Backing ArrayBuffer.
+         * @type {!ArrayBuffer}
+         * @expose
+         */
+        this.buffer = capacity === 0 ? EMPTY_BUFFER : new ArrayBuffer(capacity);
+
+        /**
+         * Uint8Array utilized to manipulate the backing buffer. Becomes `null` if the backing buffer has a capacity of `0`.
+         * @type {?Uint8Array}
+         * @expose
+         */
+        this.view = capacity === 0 ? null : new Uint8Array(this.buffer);
+
+        /**
+         * Absolute read/write offset.
+         * @type {number}
+         * @expose
+         * @see ByteBuffer#flip
+         * @see ByteBuffer#clear
+         */
+        this.offset = 0;
+
+        /**
+         * Marked offset.
+         * @type {number}
+         * @expose
+         * @see ByteBuffer#mark
+         * @see ByteBuffer#reset
+         */
+        this.markedOffset = -1;
+
+        /**
+         * Absolute limit of the contained data. Set to the backing buffer's capacity upon allocation.
+         * @type {number}
+         * @expose
+         * @see ByteBuffer#flip
+         * @see ByteBuffer#clear
+         */
+        this.limit = capacity;
+
+        /**
+         * Whether to use little endian byte order, defaults to `false` for big endian.
+         * @type {boolean}
+         * @expose
+         */
+        this.littleEndian = littleEndian;
+
+        /**
+         * Whether to skip assertions of offsets and values, defaults to `false`.
+         * @type {boolean}
+         * @expose
+         */
+        this.noAssert = noAssert;
+    };
+
+    /**
+     * ByteBuffer version.
+     * @type {string}
+     * @const
+     * @expose
+     */
+    ByteBuffer.VERSION = "5.0.1";
+
+    /**
+     * Little endian constant that can be used instead of its boolean value. Evaluates to `true`.
+     * @type {boolean}
+     * @const
+     * @expose
+     */
+    ByteBuffer.LITTLE_ENDIAN = true;
+
+    /**
+     * Big endian constant that can be used instead of its boolean value. Evaluates to `false`.
+     * @type {boolean}
+     * @const
+     * @expose
+     */
+    ByteBuffer.BIG_ENDIAN = false;
+
+    /**
+     * Default initial capacity of `16`.
+     * @type {number}
+     * @expose
+     */
+    ByteBuffer.DEFAULT_CAPACITY = 16;
+
+    /**
+     * Default endianess of `false` for big endian.
+     * @type {boolean}
+     * @expose
+     */
+    ByteBuffer.DEFAULT_ENDIAN = ByteBuffer.BIG_ENDIAN;
+
+    /**
+     * Default no assertions flag of `false`.
+     * @type {boolean}
+     * @expose
+     */
+    ByteBuffer.DEFAULT_NOASSERT = false;
+
+    /**
+     * A `Long` class for representing a 64-bit two's-complement integer value. May be `null` if Long.js has not been loaded
+     *  and int64 support is not available.
+     * @type {?Long}
+     * @const
+     * @see https://github.com/dcodeIO/long.js
+     * @expose
+     */
+    ByteBuffer.Long = Long || null;
+
+    /**
+     * @alias ByteBuffer.prototype
+     * @inner
+     */
+    var ByteBufferPrototype = ByteBuffer.prototype;
+
+    /**
+     * An indicator used to reliably determine if an object is a ByteBuffer or not.
+     * @type {boolean}
+     * @const
+     * @expose
+     * @private
+     */
+    ByteBufferPrototype.__isByteBuffer__;
+
+    Object.defineProperty(ByteBufferPrototype, "__isByteBuffer__", {
+        value: true,
+        enumerable: false,
+        configurable: false
+    });
+
+    // helpers
+
+    /**
+     * @type {!ArrayBuffer}
+     * @inner
+     */
+    var EMPTY_BUFFER = new ArrayBuffer(0);
+
+    /**
+     * String.fromCharCode reference for compile-time renaming.
+     * @type {function(...number):string}
+     * @inner
+     */
+    var stringFromCharCode = String.fromCharCode;
+
+    /**
+     * Creates a source function for a string.
+     * @param {string} s String to read from
+     * @returns {function():number|null} Source function returning the next char code respectively `null` if there are
+     *  no more characters left.
+     * @throws {TypeError} If the argument is invalid
+     * @inner
+     */
+    function stringSource(s) {
+        var i=0; return function() {
+            return i < s.length ? s.charCodeAt(i++) : null;
+        };
+    }
+
+    /**
+     * Creates a destination function for a string.
+     * @returns {function(number=):undefined|string} Destination function successively called with the next char code.
+     *  Returns the final string when called without arguments.
+     * @inner
+     */
+    function stringDestination() {
+        var cs = [], ps = []; return function() {
+            if (arguments.length === 0)
+                return ps.join('')+stringFromCharCode.apply(String, cs);
+            if (cs.length + arguments.length > 1024)
+                ps.push(stringFromCharCode.apply(String, cs)),
+                    cs.length = 0;
+            Array.prototype.push.apply(cs, arguments);
+        };
+    }
+
+    /**
+     * Gets the accessor type.
+     * @returns {Function} `Buffer` under node.js, `Uint8Array` respectively `DataView` in the browser (classes)
+     * @expose
+     */
+    ByteBuffer.accessor = function() {
+        return Uint8Array;
+    };
+    /**
+     * Allocates a new ByteBuffer backed by a buffer of the specified capacity.
+     * @param {number=} capacity Initial capacity. Defaults to {@link ByteBuffer.DEFAULT_CAPACITY}.
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer}
+     * @expose
+     */
+    ByteBuffer.allocate = function(capacity, littleEndian, noAssert) {
+        return new ByteBuffer(capacity, littleEndian, noAssert);
+    };
+
+    /**
+     * Concatenates multiple ByteBuffers into one.
+     * @param {!Array.<!ByteBuffer|!ArrayBuffer|!Uint8Array|string>} buffers Buffers to concatenate
+     * @param {(string|boolean)=} encoding String encoding if `buffers` contains a string ("base64", "hex", "binary",
+     *  defaults to "utf8")
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order for the resulting ByteBuffer. Defaults
+     *  to {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values for the resulting ByteBuffer. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer} Concatenated ByteBuffer
+     * @expose
+     */
+    ByteBuffer.concat = function(buffers, encoding, littleEndian, noAssert) {
+        if (typeof encoding === 'boolean' || typeof encoding !== 'string') {
+            noAssert = littleEndian;
+            littleEndian = encoding;
+            encoding = undefined;
+        }
+        var capacity = 0;
+        for (var i=0, k=buffers.length, length; i<k; ++i) {
+            if (!ByteBuffer.isByteBuffer(buffers[i]))
+                buffers[i] = ByteBuffer.wrap(buffers[i], encoding);
+            length = buffers[i].limit - buffers[i].offset;
+            if (length > 0) capacity += length;
+        }
+        if (capacity === 0)
+            return new ByteBuffer(0, littleEndian, noAssert);
+        var bb = new ByteBuffer(capacity, littleEndian, noAssert),
+            bi;
+        i=0; while (i<k) {
+            bi = buffers[i++];
+            length = bi.limit - bi.offset;
+            if (length <= 0) continue;
+            bb.view.set(bi.view.subarray(bi.offset, bi.limit), bb.offset);
+            bb.offset += length;
+        }
+        bb.limit = bb.offset;
+        bb.offset = 0;
+        return bb;
+    };
+
+    /**
+     * Tests if the specified type is a ByteBuffer.
+     * @param {*} bb ByteBuffer to test
+     * @returns {boolean} `true` if it is a ByteBuffer, otherwise `false`
+     * @expose
+     */
+    ByteBuffer.isByteBuffer = function(bb) {
+        return (bb && bb["__isByteBuffer__"]) === true;
+    };
+    /**
+     * Gets the backing buffer type.
+     * @returns {Function} `Buffer` under node.js, `ArrayBuffer` in the browser (classes)
+     * @expose
+     */
+    ByteBuffer.type = function() {
+        return ArrayBuffer;
+    };
+    /**
+     * Wraps a buffer or a string. Sets the allocated ByteBuffer's {@link ByteBuffer#offset} to `0` and its
+     *  {@link ByteBuffer#limit} to the length of the wrapped data.
+     * @param {!ByteBuffer|!ArrayBuffer|!Uint8Array|string|!Array.<number>} buffer Anything that can be wrapped
+     * @param {(string|boolean)=} encoding String encoding if `buffer` is a string ("base64", "hex", "binary", defaults to
+     *  "utf8")
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer} A ByteBuffer wrapping `buffer`
+     * @expose
+     */
+    ByteBuffer.wrap = function(buffer, encoding, littleEndian, noAssert) {
+        if (typeof encoding !== 'string') {
+            noAssert = littleEndian;
+            littleEndian = encoding;
+            encoding = undefined;
+        }
+        if (typeof buffer === 'string') {
+            if (typeof encoding === 'undefined')
+                encoding = "utf8";
+            switch (encoding) {
+                case "base64":
+                    return ByteBuffer.fromBase64(buffer, littleEndian);
+                case "hex":
+                    return ByteBuffer.fromHex(buffer, littleEndian);
+                case "binary":
+                    return ByteBuffer.fromBinary(buffer, littleEndian);
+                case "utf8":
+                    return ByteBuffer.fromUTF8(buffer, littleEndian);
+                case "debug":
+                    return ByteBuffer.fromDebug(buffer, littleEndian);
+                default:
+                    throw Error("Unsupported encoding: "+encoding);
+            }
+        }
+        if (buffer === null || typeof buffer !== 'object')
+            throw TypeError("Illegal buffer");
+        var bb;
+        if (ByteBuffer.isByteBuffer(buffer)) {
+            bb = ByteBufferPrototype.clone.call(buffer);
+            bb.markedOffset = -1;
+            return bb;
+        }
+        if (buffer instanceof Uint8Array) { // Extract ArrayBuffer from Uint8Array
+            bb = new ByteBuffer(0, littleEndian, noAssert);
+            if (buffer.length > 0) { // Avoid references to more than one EMPTY_BUFFER
+                bb.buffer = buffer.buffer;
+                bb.offset = buffer.byteOffset;
+                bb.limit = buffer.byteOffset + buffer.byteLength;
+                bb.view = new Uint8Array(buffer.buffer);
+            }
+        } else if (buffer instanceof ArrayBuffer) { // Reuse ArrayBuffer
+            bb = new ByteBuffer(0, littleEndian, noAssert);
+            if (buffer.byteLength > 0) {
+                bb.buffer = buffer;
+                bb.offset = 0;
+                bb.limit = buffer.byteLength;
+                bb.view = buffer.byteLength > 0 ? new Uint8Array(buffer) : null;
+            }
+        } else if (Object.prototype.toString.call(buffer) === "[object Array]") { // Create from octets
+            bb = new ByteBuffer(buffer.length, littleEndian, noAssert);
+            bb.limit = buffer.length;
+            for (var i=0; i<buffer.length; ++i)
+                bb.view[i] = buffer[i];
+        } else
+            throw TypeError("Illegal buffer"); // Otherwise fail
+        return bb;
+    };
+
+    /**
+     * Writes the array as a bitset.
+     * @param {Array<boolean>} value Array of booleans to write
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `length` if omitted.
+     * @returns {!ByteBuffer}
+     * @expose
+     */
+    ByteBufferPrototype.writeBitSet = function(value, offset) {
+      var relative = typeof offset === 'undefined';
+      if (relative) offset = this.offset;
+      if (!this.noAssert) {
+        if (!(value instanceof Array))
+          throw TypeError("Illegal BitSet: Not an array");
+        if (typeof offset !== 'number' || offset % 1 !== 0)
+            throw TypeError("Illegal offset: "+offset+" (not an integer)");
+        offset >>>= 0;
+        if (offset < 0 || offset + 0 > this.buffer.byteLength)
+            throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+      }
+
+      var start = offset,
+          bits = value.length,
+          bytes = (bits >> 3),
+          bit = 0,
+          k;
+
+      offset += this.writeVarint32(bits,offset);
+
+      while(bytes--) {
+        k = (!!value[bit++] & 1) |
+            ((!!value[bit++] & 1) << 1) |
+            ((!!value[bit++] & 1) << 2) |
+            ((!!value[bit++] & 1) << 3) |
+            ((!!value[bit++] & 1) << 4) |
+            ((!!value[bit++] & 1) << 5) |
+            ((!!value[bit++] & 1) << 6) |
+            ((!!value[bit++] & 1) << 7);
+        this.writeByte(k,offset++);
+      }
+
+      if(bit < bits) {
+        var m = 0; k = 0;
+        while(bit < bits) k = k | ((!!value[bit++] & 1) << (m++));
+        this.writeByte(k,offset++);
+      }
+
+      if (relative) {
+        this.offset = offset;
+        return this;
+      }
+      return offset - start;
+    }
+
+    /**
+     * Reads a BitSet as an array of booleans.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `length` if omitted.
+     * @returns {Array<boolean>
+     * @expose
+     */
+    ByteBufferPrototype.readBitSet = function(offset) {
+      var relative = typeof offset === 'undefined';
+      if (relative) offset = this.offset;
+
+      var ret = this.readVarint32(offset),
+          bits = ret.value,
+          bytes = (bits >> 3),
+          bit = 0,
+          value = [],
+          k;
+
+      offset += ret.length;
+
+      while(bytes--) {
+        k = this.readByte(offset++);
+        value[bit++] = !!(k & 0x01);
+        value[bit++] = !!(k & 0x02);
+        value[bit++] = !!(k & 0x04);
+        value[bit++] = !!(k & 0x08);
+        value[bit++] = !!(k & 0x10);
+        value[bit++] = !!(k & 0x20);
+        value[bit++] = !!(k & 0x40);
+        value[bit++] = !!(k & 0x80);
+      }
+
+      if(bit < bits) {
+        var m = 0;
+        k = this.readByte(offset++);
+        while(bit < bits) value[bit++] = !!((k >> (m++)) & 1);
+      }
+
+      if (relative) {
+        this.offset = offset;
+      }
+      return value;
+    }
+    /**
+     * Reads the specified number of bytes.
+     * @param {number} length Number of bytes to read
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `length` if omitted.
+     * @returns {!ByteBuffer}
+     * @expose
+     */
+    ByteBufferPrototype.readBytes = function(length, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + length > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+length+") <= "+this.buffer.byteLength);
+        }
+        var slice = this.slice(offset, offset + length);
+        if (relative) this.offset += length;
+        return slice;
+    };
+
+    /**
+     * Writes a payload of bytes. This is an alias of {@link ByteBuffer#append}.
+     * @function
+     * @param {!ByteBuffer|!ArrayBuffer|!Uint8Array|string} source Data to write. If `source` is a ByteBuffer, its offsets
+     *  will be modified according to the performed read operation.
+     * @param {(string|number)=} encoding Encoding if `data` is a string ("base64", "hex", "binary", defaults to "utf8")
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeBytes = ByteBufferPrototype.append;
+
+    // types/ints/int8
+
+    /**
+     * Writes an 8bit signed integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeInt8 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value |= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 1;
+        var capacity0 = this.buffer.byteLength;
+        if (offset > capacity0)
+            this.resize((capacity0 *= 2) > offset ? capacity0 : offset);
+        offset -= 1;
+        this.view[offset] = value;
+        if (relative) this.offset += 1;
+        return this;
+    };
+
+    /**
+     * Writes an 8bit signed integer. This is an alias of {@link ByteBuffer#writeInt8}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeByte = ByteBufferPrototype.writeInt8;
+
+    /**
+     * Reads an 8bit signed integer.
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readInt8 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        }
+        var value = this.view[offset];
+        if ((value & 0x80) === 0x80) value = -(0xFF - value + 1); // Cast to signed
+        if (relative) this.offset += 1;
+        return value;
+    };
+
+    /**
+     * Reads an 8bit signed integer. This is an alias of {@link ByteBuffer#readInt8}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readByte = ByteBufferPrototype.readInt8;
+
+    /**
+     * Writes an 8bit unsigned integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeUint8 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value >>>= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 1;
+        var capacity1 = this.buffer.byteLength;
+        if (offset > capacity1)
+            this.resize((capacity1 *= 2) > offset ? capacity1 : offset);
+        offset -= 1;
+        this.view[offset] = value;
+        if (relative) this.offset += 1;
+        return this;
+    };
+
+    /**
+     * Writes an 8bit unsigned integer. This is an alias of {@link ByteBuffer#writeUint8}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeUInt8 = ByteBufferPrototype.writeUint8;
+
+    /**
+     * Reads an 8bit unsigned integer.
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readUint8 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        }
+        var value = this.view[offset];
+        if (relative) this.offset += 1;
+        return value;
+    };
+
+    /**
+     * Reads an 8bit unsigned integer. This is an alias of {@link ByteBuffer#readUint8}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `1` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readUInt8 = ByteBufferPrototype.readUint8;
+
+    // types/ints/int16
+
+    /**
+     * Writes a 16bit signed integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @throws {TypeError} If `offset` or `value` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.writeInt16 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value |= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 2;
+        var capacity2 = this.buffer.byteLength;
+        if (offset > capacity2)
+            this.resize((capacity2 *= 2) > offset ? capacity2 : offset);
+        offset -= 2;
+        if (this.littleEndian) {
+            this.view[offset+1] = (value & 0xFF00) >>> 8;
+            this.view[offset  ] =  value & 0x00FF;
+        } else {
+            this.view[offset]   = (value & 0xFF00) >>> 8;
+            this.view[offset+1] =  value & 0x00FF;
+        }
+        if (relative) this.offset += 2;
+        return this;
+    };
+
+    /**
+     * Writes a 16bit signed integer. This is an alias of {@link ByteBuffer#writeInt16}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @throws {TypeError} If `offset` or `value` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.writeShort = ByteBufferPrototype.writeInt16;
+
+    /**
+     * Reads a 16bit signed integer.
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @returns {number} Value read
+     * @throws {TypeError} If `offset` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.readInt16 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 2 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+2+") <= "+this.buffer.byteLength);
+        }
+        var value = 0;
+        if (this.littleEndian) {
+            value  = this.view[offset  ];
+            value |= this.view[offset+1] << 8;
+        } else {
+            value  = this.view[offset  ] << 8;
+            value |= this.view[offset+1];
+        }
+        if ((value & 0x8000) === 0x8000) value = -(0xFFFF - value + 1); // Cast to signed
+        if (relative) this.offset += 2;
+        return value;
+    };
+
+    /**
+     * Reads a 16bit signed integer. This is an alias of {@link ByteBuffer#readInt16}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @returns {number} Value read
+     * @throws {TypeError} If `offset` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.readShort = ByteBufferPrototype.readInt16;
+
+    /**
+     * Writes a 16bit unsigned integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @throws {TypeError} If `offset` or `value` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.writeUint16 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value >>>= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 2;
+        var capacity3 = this.buffer.byteLength;
+        if (offset > capacity3)
+            this.resize((capacity3 *= 2) > offset ? capacity3 : offset);
+        offset -= 2;
+        if (this.littleEndian) {
+            this.view[offset+1] = (value & 0xFF00) >>> 8;
+            this.view[offset  ] =  value & 0x00FF;
+        } else {
+            this.view[offset]   = (value & 0xFF00) >>> 8;
+            this.view[offset+1] =  value & 0x00FF;
+        }
+        if (relative) this.offset += 2;
+        return this;
+    };
+
+    /**
+     * Writes a 16bit unsigned integer. This is an alias of {@link ByteBuffer#writeUint16}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @throws {TypeError} If `offset` or `value` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.writeUInt16 = ByteBufferPrototype.writeUint16;
+
+    /**
+     * Reads a 16bit unsigned integer.
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @returns {number} Value read
+     * @throws {TypeError} If `offset` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.readUint16 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 2 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+2+") <= "+this.buffer.byteLength);
+        }
+        var value = 0;
+        if (this.littleEndian) {
+            value  = this.view[offset  ];
+            value |= this.view[offset+1] << 8;
+        } else {
+            value  = this.view[offset  ] << 8;
+            value |= this.view[offset+1];
+        }
+        if (relative) this.offset += 2;
+        return value;
+    };
+
+    /**
+     * Reads a 16bit unsigned integer. This is an alias of {@link ByteBuffer#readUint16}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `2` if omitted.
+     * @returns {number} Value read
+     * @throws {TypeError} If `offset` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.readUInt16 = ByteBufferPrototype.readUint16;
+
+    // types/ints/int32
+
+    /**
+     * Writes a 32bit signed integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @expose
+     */
+    ByteBufferPrototype.writeInt32 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value |= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 4;
+        var capacity4 = this.buffer.byteLength;
+        if (offset > capacity4)
+            this.resize((capacity4 *= 2) > offset ? capacity4 : offset);
+        offset -= 4;
+        if (this.littleEndian) {
+            this.view[offset+3] = (value >>> 24) & 0xFF;
+            this.view[offset+2] = (value >>> 16) & 0xFF;
+            this.view[offset+1] = (value >>>  8) & 0xFF;
+            this.view[offset  ] =  value         & 0xFF;
+        } else {
+            this.view[offset  ] = (value >>> 24) & 0xFF;
+            this.view[offset+1] = (value >>> 16) & 0xFF;
+            this.view[offset+2] = (value >>>  8) & 0xFF;
+            this.view[offset+3] =  value         & 0xFF;
+        }
+        if (relative) this.offset += 4;
+        return this;
+    };
+
+    /**
+     * Writes a 32bit signed integer. This is an alias of {@link ByteBuffer#writeInt32}.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @expose
+     */
+    ByteBufferPrototype.writeInt = ByteBufferPrototype.writeInt32;
+
+    /**
+     * Reads a 32bit signed integer.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readInt32 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 4 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+4+") <= "+this.buffer.byteLength);
+        }
+        var value = 0;
+        if (this.littleEndian) {
+            value  = this.view[offset+2] << 16;
+            value |= this.view[offset+1] <<  8;
+            value |= this.view[offset  ];
+            value += this.view[offset+3] << 24 >>> 0;
+        } else {
+            value  = this.view[offset+1] << 16;
+            value |= this.view[offset+2] <<  8;
+            value |= this.view[offset+3];
+            value += this.view[offset  ] << 24 >>> 0;
+        }
+        value |= 0; // Cast to signed
+        if (relative) this.offset += 4;
+        return value;
+    };
+
+    /**
+     * Reads a 32bit signed integer. This is an alias of {@link ByteBuffer#readInt32}.
+     * @param {number=} offset Offset to read from. Will use and advance {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readInt = ByteBufferPrototype.readInt32;
+
+    /**
+     * Writes a 32bit unsigned integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @expose
+     */
+    ByteBufferPrototype.writeUint32 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value >>>= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 4;
+        var capacity5 = this.buffer.byteLength;
+        if (offset > capacity5)
+            this.resize((capacity5 *= 2) > offset ? capacity5 : offset);
+        offset -= 4;
+        if (this.littleEndian) {
+            this.view[offset+3] = (value >>> 24) & 0xFF;
+            this.view[offset+2] = (value >>> 16) & 0xFF;
+            this.view[offset+1] = (value >>>  8) & 0xFF;
+            this.view[offset  ] =  value         & 0xFF;
+        } else {
+            this.view[offset  ] = (value >>> 24) & 0xFF;
+            this.view[offset+1] = (value >>> 16) & 0xFF;
+            this.view[offset+2] = (value >>>  8) & 0xFF;
+            this.view[offset+3] =  value         & 0xFF;
+        }
+        if (relative) this.offset += 4;
+        return this;
+    };
+
+    /**
+     * Writes a 32bit unsigned integer. This is an alias of {@link ByteBuffer#writeUint32}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @expose
+     */
+    ByteBufferPrototype.writeUInt32 = ByteBufferPrototype.writeUint32;
+
+    /**
+     * Reads a 32bit unsigned integer.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readUint32 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 4 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+4+") <= "+this.buffer.byteLength);
+        }
+        var value = 0;
+        if (this.littleEndian) {
+            value  = this.view[offset+2] << 16;
+            value |= this.view[offset+1] <<  8;
+            value |= this.view[offset  ];
+            value += this.view[offset+3] << 24 >>> 0;
+        } else {
+            value  = this.view[offset+1] << 16;
+            value |= this.view[offset+2] <<  8;
+            value |= this.view[offset+3];
+            value += this.view[offset  ] << 24 >>> 0;
+        }
+        if (relative) this.offset += 4;
+        return value;
+    };
+
+    /**
+     * Reads a 32bit unsigned integer. This is an alias of {@link ByteBuffer#readUint32}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number} Value read
+     * @expose
+     */
+    ByteBufferPrototype.readUInt32 = ByteBufferPrototype.readUint32;
+
+    // types/ints/int64
+
+    if (Long) {
+
+        /**
+         * Writes a 64bit signed integer.
+         * @param {number|!Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!ByteBuffer} this
+         * @expose
+         */
+        ByteBufferPrototype.writeInt64 = function(value, offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof value === 'number')
+                    value = Long.fromNumber(value);
+                else if (typeof value === 'string')
+                    value = Long.fromString(value);
+                else if (!(value && value instanceof Long))
+                    throw TypeError("Illegal value: "+value+" (not an integer or Long)");
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+            }
+            if (typeof value === 'number')
+                value = Long.fromNumber(value);
+            else if (typeof value === 'string')
+                value = Long.fromString(value);
+            offset += 8;
+            var capacity6 = this.buffer.byteLength;
+            if (offset > capacity6)
+                this.resize((capacity6 *= 2) > offset ? capacity6 : offset);
+            offset -= 8;
+            var lo = value.low,
+                hi = value.high;
+            if (this.littleEndian) {
+                this.view[offset+3] = (lo >>> 24) & 0xFF;
+                this.view[offset+2] = (lo >>> 16) & 0xFF;
+                this.view[offset+1] = (lo >>>  8) & 0xFF;
+                this.view[offset  ] =  lo         & 0xFF;
+                offset += 4;
+                this.view[offset+3] = (hi >>> 24) & 0xFF;
+                this.view[offset+2] = (hi >>> 16) & 0xFF;
+                this.view[offset+1] = (hi >>>  8) & 0xFF;
+                this.view[offset  ] =  hi         & 0xFF;
+            } else {
+                this.view[offset  ] = (hi >>> 24) & 0xFF;
+                this.view[offset+1] = (hi >>> 16) & 0xFF;
+                this.view[offset+2] = (hi >>>  8) & 0xFF;
+                this.view[offset+3] =  hi         & 0xFF;
+                offset += 4;
+                this.view[offset  ] = (lo >>> 24) & 0xFF;
+                this.view[offset+1] = (lo >>> 16) & 0xFF;
+                this.view[offset+2] = (lo >>>  8) & 0xFF;
+                this.view[offset+3] =  lo         & 0xFF;
+            }
+            if (relative) this.offset += 8;
+            return this;
+        };
+
+        /**
+         * Writes a 64bit signed integer. This is an alias of {@link ByteBuffer#writeInt64}.
+         * @param {number|!Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!ByteBuffer} this
+         * @expose
+         */
+        ByteBufferPrototype.writeLong = ByteBufferPrototype.writeInt64;
+
+        /**
+         * Reads a 64bit signed integer.
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!Long}
+         * @expose
+         */
+        ByteBufferPrototype.readInt64 = function(offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 8 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+8+") <= "+this.buffer.byteLength);
+            }
+            var lo = 0,
+                hi = 0;
+            if (this.littleEndian) {
+                lo  = this.view[offset+2] << 16;
+                lo |= this.view[offset+1] <<  8;
+                lo |= this.view[offset  ];
+                lo += this.view[offset+3] << 24 >>> 0;
+                offset += 4;
+                hi  = this.view[offset+2] << 16;
+                hi |= this.view[offset+1] <<  8;
+                hi |= this.view[offset  ];
+                hi += this.view[offset+3] << 24 >>> 0;
+            } else {
+                hi  = this.view[offset+1] << 16;
+                hi |= this.view[offset+2] <<  8;
+                hi |= this.view[offset+3];
+                hi += this.view[offset  ] << 24 >>> 0;
+                offset += 4;
+                lo  = this.view[offset+1] << 16;
+                lo |= this.view[offset+2] <<  8;
+                lo |= this.view[offset+3];
+                lo += this.view[offset  ] << 24 >>> 0;
+            }
+            var value = new Long(lo, hi, false);
+            if (relative) this.offset += 8;
+            return value;
+        };
+
+        /**
+         * Reads a 64bit signed integer. This is an alias of {@link ByteBuffer#readInt64}.
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!Long}
+         * @expose
+         */
+        ByteBufferPrototype.readLong = ByteBufferPrototype.readInt64;
+
+        /**
+         * Writes a 64bit unsigned integer.
+         * @param {number|!Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!ByteBuffer} this
+         * @expose
+         */
+        ByteBufferPrototype.writeUint64 = function(value, offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof value === 'number')
+                    value = Long.fromNumber(value);
+                else if (typeof value === 'string')
+                    value = Long.fromString(value);
+                else if (!(value && value instanceof Long))
+                    throw TypeError("Illegal value: "+value+" (not an integer or Long)");
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+            }
+            if (typeof value === 'number')
+                value = Long.fromNumber(value);
+            else if (typeof value === 'string')
+                value = Long.fromString(value);
+            offset += 8;
+            var capacity7 = this.buffer.byteLength;
+            if (offset > capacity7)
+                this.resize((capacity7 *= 2) > offset ? capacity7 : offset);
+            offset -= 8;
+            var lo = value.low,
+                hi = value.high;
+            if (this.littleEndian) {
+                this.view[offset+3] = (lo >>> 24) & 0xFF;
+                this.view[offset+2] = (lo >>> 16) & 0xFF;
+                this.view[offset+1] = (lo >>>  8) & 0xFF;
+                this.view[offset  ] =  lo         & 0xFF;
+                offset += 4;
+                this.view[offset+3] = (hi >>> 24) & 0xFF;
+                this.view[offset+2] = (hi >>> 16) & 0xFF;
+                this.view[offset+1] = (hi >>>  8) & 0xFF;
+                this.view[offset  ] =  hi         & 0xFF;
+            } else {
+                this.view[offset  ] = (hi >>> 24) & 0xFF;
+                this.view[offset+1] = (hi >>> 16) & 0xFF;
+                this.view[offset+2] = (hi >>>  8) & 0xFF;
+                this.view[offset+3] =  hi         & 0xFF;
+                offset += 4;
+                this.view[offset  ] = (lo >>> 24) & 0xFF;
+                this.view[offset+1] = (lo >>> 16) & 0xFF;
+                this.view[offset+2] = (lo >>>  8) & 0xFF;
+                this.view[offset+3] =  lo         & 0xFF;
+            }
+            if (relative) this.offset += 8;
+            return this;
+        };
+
+        /**
+         * Writes a 64bit unsigned integer. This is an alias of {@link ByteBuffer#writeUint64}.
+         * @function
+         * @param {number|!Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!ByteBuffer} this
+         * @expose
+         */
+        ByteBufferPrototype.writeUInt64 = ByteBufferPrototype.writeUint64;
+
+        /**
+         * Reads a 64bit unsigned integer.
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!Long}
+         * @expose
+         */
+        ByteBufferPrototype.readUint64 = function(offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 8 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+8+") <= "+this.buffer.byteLength);
+            }
+            var lo = 0,
+                hi = 0;
+            if (this.littleEndian) {
+                lo  = this.view[offset+2] << 16;
+                lo |= this.view[offset+1] <<  8;
+                lo |= this.view[offset  ];
+                lo += this.view[offset+3] << 24 >>> 0;
+                offset += 4;
+                hi  = this.view[offset+2] << 16;
+                hi |= this.view[offset+1] <<  8;
+                hi |= this.view[offset  ];
+                hi += this.view[offset+3] << 24 >>> 0;
+            } else {
+                hi  = this.view[offset+1] << 16;
+                hi |= this.view[offset+2] <<  8;
+                hi |= this.view[offset+3];
+                hi += this.view[offset  ] << 24 >>> 0;
+                offset += 4;
+                lo  = this.view[offset+1] << 16;
+                lo |= this.view[offset+2] <<  8;
+                lo |= this.view[offset+3];
+                lo += this.view[offset  ] << 24 >>> 0;
+            }
+            var value = new Long(lo, hi, true);
+            if (relative) this.offset += 8;
+            return value;
+        };
+
+        /**
+         * Reads a 64bit unsigned integer. This is an alias of {@link ByteBuffer#readUint64}.
+         * @function
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+         * @returns {!Long}
+         * @expose
+         */
+        ByteBufferPrototype.readUInt64 = ByteBufferPrototype.readUint64;
+
+    } // Long
+
+
+    // types/floats/float32
+
+    /*
+     ieee754 - https://github.com/feross/ieee754
+
+     The MIT License (MIT)
+
+     Copyright (c) Feross Aboukhadijeh
+
+     Permission is hereby granted, free of charge, to any person obtaining a copy
+     of this software and associated documentation files (the "Software"), to deal
+     in the Software without restriction, including without limitation the rights
+     to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+     copies of the Software, and to permit persons to whom the Software is
+     furnished to do so, subject to the following conditions:
+
+     The above copyright notice and this permission notice shall be included in
+     all copies or substantial portions of the Software.
+
+     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+     THE SOFTWARE.
+    */
+
+    /**
+     * Reads an IEEE754 float from a byte array.
+     * @param {!Array} buffer
+     * @param {number} offset
+     * @param {boolean} isLE
+     * @param {number} mLen
+     * @param {number} nBytes
+     * @returns {number}
+     * @inner
+     */
+    function ieee754_read(buffer, offset, isLE, mLen, nBytes) {
+        var e, m,
+            eLen = nBytes * 8 - mLen - 1,
+            eMax = (1 << eLen) - 1,
+            eBias = eMax >> 1,
+            nBits = -7,
+            i = isLE ? (nBytes - 1) : 0,
+            d = isLE ? -1 : 1,
+            s = buffer[offset + i];
+
+        i += d;
+
+        e = s & ((1 << (-nBits)) - 1);
+        s >>= (-nBits);
+        nBits += eLen;
+        for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+        m = e & ((1 << (-nBits)) - 1);
+        e >>= (-nBits);
+        nBits += mLen;
+        for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+        if (e === 0) {
+            e = 1 - eBias;
+        } else if (e === eMax) {
+            return m ? NaN : ((s ? -1 : 1) * Infinity);
+        } else {
+            m = m + Math.pow(2, mLen);
+            e = e - eBias;
+        }
+        return (s ? -1 : 1) * m * Math.pow(2, e - mLen);
+    }
+
+    /**
+     * Writes an IEEE754 float to a byte array.
+     * @param {!Array} buffer
+     * @param {number} value
+     * @param {number} offset
+     * @param {boolean} isLE
+     * @param {number} mLen
+     * @param {number} nBytes
+     * @inner
+     */
+    function ieee754_write(buffer, value, offset, isLE, mLen, nBytes) {
+        var e, m, c,
+            eLen = nBytes * 8 - mLen - 1,
+            eMax = (1 << eLen) - 1,
+            eBias = eMax >> 1,
+            rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0),
+            i = isLE ? 0 : (nBytes - 1),
+            d = isLE ? 1 : -1,
+            s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0;
+
+        value = Math.abs(value);
+
+        if (isNaN(value) || value === Infinity) {
+            m = isNaN(value) ? 1 : 0;
+            e = eMax;
+        } else {
+            e = Math.floor(Math.log(value) / Math.LN2);
+            if (value * (c = Math.pow(2, -e)) < 1) {
+                e--;
+                c *= 2;
+            }
+            if (e + eBias >= 1) {
+                value += rt / c;
+            } else {
+                value += rt * Math.pow(2, 1 - eBias);
+            }
+            if (value * c >= 2) {
+                e++;
+                c /= 2;
+            }
+
+            if (e + eBias >= eMax) {
+                m = 0;
+                e = eMax;
+            } else if (e + eBias >= 1) {
+                m = (value * c - 1) * Math.pow(2, mLen);
+                e = e + eBias;
+            } else {
+                m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen);
+                e = 0;
+            }
+        }
+
+        for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
+
+        e = (e << mLen) | m;
+        eLen += mLen;
+        for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
+
+        buffer[offset + i - d] |= s * 128;
+    }
+
+    /**
+     * Writes a 32bit float.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeFloat32 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number')
+                throw TypeError("Illegal value: "+value+" (not a number)");
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 4;
+        var capacity8 = this.buffer.byteLength;
+        if (offset > capacity8)
+            this.resize((capacity8 *= 2) > offset ? capacity8 : offset);
+        offset -= 4;
+        ieee754_write(this.view, value, offset, this.littleEndian, 23, 4);
+        if (relative) this.offset += 4;
+        return this;
+    };
+
+    /**
+     * Writes a 32bit float. This is an alias of {@link ByteBuffer#writeFloat32}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeFloat = ByteBufferPrototype.writeFloat32;
+
+    /**
+     * Reads a 32bit float.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number}
+     * @expose
+     */
+    ByteBufferPrototype.readFloat32 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 4 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+4+") <= "+this.buffer.byteLength);
+        }
+        var value = ieee754_read(this.view, offset, this.littleEndian, 23, 4);
+        if (relative) this.offset += 4;
+        return value;
+    };
+
+    /**
+     * Reads a 32bit float. This is an alias of {@link ByteBuffer#readFloat32}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `4` if omitted.
+     * @returns {number}
+     * @expose
+     */
+    ByteBufferPrototype.readFloat = ByteBufferPrototype.readFloat32;
+
+    // types/floats/float64
+
+    /**
+     * Writes a 64bit float.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeFloat64 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number')
+                throw TypeError("Illegal value: "+value+" (not a number)");
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        offset += 8;
+        var capacity9 = this.buffer.byteLength;
+        if (offset > capacity9)
+            this.resize((capacity9 *= 2) > offset ? capacity9 : offset);
+        offset -= 8;
+        ieee754_write(this.view, value, offset, this.littleEndian, 52, 8);
+        if (relative) this.offset += 8;
+        return this;
+    };
+
+    /**
+     * Writes a 64bit float. This is an alias of {@link ByteBuffer#writeFloat64}.
+     * @function
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.writeDouble = ByteBufferPrototype.writeFloat64;
+
+    /**
+     * Reads a 64bit float.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+     * @returns {number}
+     * @expose
+     */
+    ByteBufferPrototype.readFloat64 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 8 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+8+") <= "+this.buffer.byteLength);
+        }
+        var value = ieee754_read(this.view, offset, this.littleEndian, 52, 8);
+        if (relative) this.offset += 8;
+        return value;
+    };
+
+    /**
+     * Reads a 64bit float. This is an alias of {@link ByteBuffer#readFloat64}.
+     * @function
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by `8` if omitted.
+     * @returns {number}
+     * @expose
+     */
+    ByteBufferPrototype.readDouble = ByteBufferPrototype.readFloat64;
+
+
+    // types/varints/varint32
+
+    /**
+     * Maximum number of bytes required to store a 32bit base 128 variable-length integer.
+     * @type {number}
+     * @const
+     * @expose
+     */
+    ByteBuffer.MAX_VARINT32_BYTES = 5;
+
+    /**
+     * Calculates the actual number of bytes required to store a 32bit base 128 variable-length integer.
+     * @param {number} value Value to encode
+     * @returns {number} Number of bytes required. Capped to {@link ByteBuffer.MAX_VARINT32_BYTES}
+     * @expose
+     */
+    ByteBuffer.calculateVarint32 = function(value) {
+        // ref: src/google/protobuf/io/coded_stream.cc
+        value = value >>> 0;
+             if (value < 1 << 7 ) return 1;
+        else if (value < 1 << 14) return 2;
+        else if (value < 1 << 21) return 3;
+        else if (value < 1 << 28) return 4;
+        else                      return 5;
+    };
+
+    /**
+     * Zigzag encodes a signed 32bit integer so that it can be effectively used with varint encoding.
+     * @param {number} n Signed 32bit integer
+     * @returns {number} Unsigned zigzag encoded 32bit integer
+     * @expose
+     */
+    ByteBuffer.zigZagEncode32 = function(n) {
+        return (((n |= 0) << 1) ^ (n >> 31)) >>> 0; // ref: src/google/protobuf/wire_format_lite.h
+    };
+
+    /**
+     * Decodes a zigzag encoded signed 32bit integer.
+     * @param {number} n Unsigned zigzag encoded 32bit integer
+     * @returns {number} Signed 32bit integer
+     * @expose
+     */
+    ByteBuffer.zigZagDecode32 = function(n) {
+        return ((n >>> 1) ^ -(n & 1)) | 0; // // ref: src/google/protobuf/wire_format_lite.h
+    };
+
+    /**
+     * Writes a 32bit base 128 variable-length integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer|number} this if `offset` is omitted, else the actual number of bytes written
+     * @expose
+     */
+    ByteBufferPrototype.writeVarint32 = function(value, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value |= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        var size = ByteBuffer.calculateVarint32(value),
+            b;
+        offset += size;
+        var capacity10 = this.buffer.byteLength;
+        if (offset > capacity10)
+            this.resize((capacity10 *= 2) > offset ? capacity10 : offset);
+        offset -= size;
+        value >>>= 0;
+        while (value >= 0x80) {
+            b = (value & 0x7f) | 0x80;
+            this.view[offset++] = b;
+            value >>>= 7;
+        }
+        this.view[offset++] = value;
+        if (relative) {
+            this.offset = offset;
+            return this;
+        }
+        return size;
+    };
+
+    /**
+     * Writes a zig-zag encoded (signed) 32bit base 128 variable-length integer.
+     * @param {number} value Value to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer|number} this if `offset` is omitted, else the actual number of bytes written
+     * @expose
+     */
+    ByteBufferPrototype.writeVarint32ZigZag = function(value, offset) {
+        return this.writeVarint32(ByteBuffer.zigZagEncode32(value), offset);
+    };
+
+    /**
+     * Reads a 32bit base 128 variable-length integer.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {number|!{value: number, length: number}} The value read if offset is omitted, else the value read
+     *  and the actual number of bytes read.
+     * @throws {Error} If it's not a valid varint. Has a property `truncated = true` if there is not enough data available
+     *  to fully decode the varint.
+     * @expose
+     */
+    ByteBufferPrototype.readVarint32 = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        }
+        var c = 0,
+            value = 0 >>> 0,
+            b;
+        do {
+            if (!this.noAssert && offset > this.limit) {
+                var err = Error("Truncated");
+                err['truncated'] = true;
+                throw err;
+            }
+            b = this.view[offset++];
+            if (c < 5)
+                value |= (b & 0x7f) << (7*c);
+            ++c;
+        } while ((b & 0x80) !== 0);
+        value |= 0;
+        if (relative) {
+            this.offset = offset;
+            return value;
+        }
+        return {
+            "value": value,
+            "length": c
+        };
+    };
+
+    /**
+     * Reads a zig-zag encoded (signed) 32bit base 128 variable-length integer.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {number|!{value: number, length: number}} The value read if offset is omitted, else the value read
+     *  and the actual number of bytes read.
+     * @throws {Error} If it's not a valid varint
+     * @expose
+     */
+    ByteBufferPrototype.readVarint32ZigZag = function(offset) {
+        var val = this.readVarint32(offset);
+        if (typeof val === 'object')
+            val["value"] = ByteBuffer.zigZagDecode32(val["value"]);
+        else
+            val = ByteBuffer.zigZagDecode32(val);
+        return val;
+    };
+
+    // types/varints/varint64
+
+    if (Long) {
+
+        /**
+         * Maximum number of bytes required to store a 64bit base 128 variable-length integer.
+         * @type {number}
+         * @const
+         * @expose
+         */
+        ByteBuffer.MAX_VARINT64_BYTES = 10;
+
+        /**
+         * Calculates the actual number of bytes required to store a 64bit base 128 variable-length integer.
+         * @param {number|!Long} value Value to encode
+         * @returns {number} Number of bytes required. Capped to {@link ByteBuffer.MAX_VARINT64_BYTES}
+         * @expose
+         */
+        ByteBuffer.calculateVarint64 = function(value) {
+            if (typeof value === 'number')
+                value = Long.fromNumber(value);
+            else if (typeof value === 'string')
+                value = Long.fromString(value);
+            // ref: src/google/protobuf/io/coded_stream.cc
+            var part0 = value.toInt() >>> 0,
+                part1 = value.shiftRightUnsigned(28).toInt() >>> 0,
+                part2 = value.shiftRightUnsigned(56).toInt() >>> 0;
+            if (part2 == 0) {
+                if (part1 == 0) {
+                    if (part0 < 1 << 14)
+                        return part0 < 1 << 7 ? 1 : 2;
+                    else
+                        return part0 < 1 << 21 ? 3 : 4;
+                } else {
+                    if (part1 < 1 << 14)
+                        return part1 < 1 << 7 ? 5 : 6;
+                    else
+                        return part1 < 1 << 21 ? 7 : 8;
+                }
+            } else
+                return part2 < 1 << 7 ? 9 : 10;
+        };
+
+        /**
+         * Zigzag encodes a signed 64bit integer so that it can be effectively used with varint encoding.
+         * @param {number|!Long} value Signed long
+         * @returns {!Long} Unsigned zigzag encoded long
+         * @expose
+         */
+        ByteBuffer.zigZagEncode64 = function(value) {
+            if (typeof value === 'number')
+                value = Long.fromNumber(value, false);
+            else if (typeof value === 'string')
+                value = Long.fromString(value, false);
+            else if (value.unsigned !== false) value = value.toSigned();
+            // ref: src/google/protobuf/wire_format_lite.h
+            return value.shiftLeft(1).xor(value.shiftRight(63)).toUnsigned();
+        };
+
+        /**
+         * Decodes a zigzag encoded signed 64bit integer.
+         * @param {!Long|number} value Unsigned zigzag encoded long or JavaScript number
+         * @returns {!Long} Signed long
+         * @expose
+         */
+        ByteBuffer.zigZagDecode64 = function(value) {
+            if (typeof value === 'number')
+                value = Long.fromNumber(value, false);
+            else if (typeof value === 'string')
+                value = Long.fromString(value, false);
+            else if (value.unsigned !== false) value = value.toSigned();
+            // ref: src/google/protobuf/wire_format_lite.h
+            return value.shiftRightUnsigned(1).xor(value.and(Long.ONE).toSigned().negate()).toSigned();
+        };
+
+        /**
+         * Writes a 64bit base 128 variable-length integer.
+         * @param {number|Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+         *  written if omitted.
+         * @returns {!ByteBuffer|number} `this` if offset is omitted, else the actual number of bytes written.
+         * @expose
+         */
+        ByteBufferPrototype.writeVarint64 = function(value, offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof value === 'number')
+                    value = Long.fromNumber(value);
+                else if (typeof value === 'string')
+                    value = Long.fromString(value);
+                else if (!(value && value instanceof Long))
+                    throw TypeError("Illegal value: "+value+" (not an integer or Long)");
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+            }
+            if (typeof value === 'number')
+                value = Long.fromNumber(value, false);
+            else if (typeof value === 'string')
+                value = Long.fromString(value, false);
+            else if (value.unsigned !== false) value = value.toSigned();
+            var size = ByteBuffer.calculateVarint64(value),
+                part0 = value.toInt() >>> 0,
+                part1 = value.shiftRightUnsigned(28).toInt() >>> 0,
+                part2 = value.shiftRightUnsigned(56).toInt() >>> 0;
+            offset += size;
+            var capacity11 = this.buffer.byteLength;
+            if (offset > capacity11)
+                this.resize((capacity11 *= 2) > offset ? capacity11 : offset);
+            offset -= size;
+            switch (size) {
+                case 10: this.view[offset+9] = (part2 >>>  7) & 0x01;
+                case 9 : this.view[offset+8] = size !== 9 ? (part2       ) | 0x80 : (part2       ) & 0x7F;
+                case 8 : this.view[offset+7] = size !== 8 ? (part1 >>> 21) | 0x80 : (part1 >>> 21) & 0x7F;
+                case 7 : this.view[offset+6] = size !== 7 ? (part1 >>> 14) | 0x80 : (part1 >>> 14) & 0x7F;
+                case 6 : this.view[offset+5] = size !== 6 ? (part1 >>>  7) | 0x80 : (part1 >>>  7) & 0x7F;
+                case 5 : this.view[offset+4] = size !== 5 ? (part1       ) | 0x80 : (part1       ) & 0x7F;
+                case 4 : this.view[offset+3] = size !== 4 ? (part0 >>> 21) | 0x80 : (part0 >>> 21) & 0x7F;
+                case 3 : this.view[offset+2] = size !== 3 ? (part0 >>> 14) | 0x80 : (part0 >>> 14) & 0x7F;
+                case 2 : this.view[offset+1] = size !== 2 ? (part0 >>>  7) | 0x80 : (part0 >>>  7) & 0x7F;
+                case 1 : this.view[offset  ] = size !== 1 ? (part0       ) | 0x80 : (part0       ) & 0x7F;
+            }
+            if (relative) {
+                this.offset += size;
+                return this;
+            } else {
+                return size;
+            }
+        };
+
+        /**
+         * Writes a zig-zag encoded 64bit base 128 variable-length integer.
+         * @param {number|Long} value Value to write
+         * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+         *  written if omitted.
+         * @returns {!ByteBuffer|number} `this` if offset is omitted, else the actual number of bytes written.
+         * @expose
+         */
+        ByteBufferPrototype.writeVarint64ZigZag = function(value, offset) {
+            return this.writeVarint64(ByteBuffer.zigZagEncode64(value), offset);
+        };
+
+        /**
+         * Reads a 64bit base 128 variable-length integer. Requires Long.js.
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+         *  read if omitted.
+         * @returns {!Long|!{value: Long, length: number}} The value read if offset is omitted, else the value read and
+         *  the actual number of bytes read.
+         * @throws {Error} If it's not a valid varint
+         * @expose
+         */
+        ByteBufferPrototype.readVarint64 = function(offset) {
+            var relative = typeof offset === 'undefined';
+            if (relative) offset = this.offset;
+            if (!this.noAssert) {
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+            }
+            // ref: src/google/protobuf/io/coded_stream.cc
+            var start = offset,
+                part0 = 0,
+                part1 = 0,
+                part2 = 0,
+                b  = 0;
+            b = this.view[offset++]; part0  = (b & 0x7F)      ; if ( b & 0x80                                                   ) {
+            b = this.view[offset++]; part0 |= (b & 0x7F) <<  7; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part0 |= (b & 0x7F) << 14; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part0 |= (b & 0x7F) << 21; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part1  = (b & 0x7F)      ; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part1 |= (b & 0x7F) <<  7; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part1 |= (b & 0x7F) << 14; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part1 |= (b & 0x7F) << 21; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part2  = (b & 0x7F)      ; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            b = this.view[offset++]; part2 |= (b & 0x7F) <<  7; if ((b & 0x80) || (this.noAssert && typeof b === 'undefined')) {
+            throw Error("Buffer overrun"); }}}}}}}}}}
+            var value = Long.fromBits(part0 | (part1 << 28), (part1 >>> 4) | (part2) << 24, false);
+            if (relative) {
+                this.offset = offset;
+                return value;
+            } else {
+                return {
+                    'value': value,
+                    'length': offset-start
+                };
+            }
+        };
+
+        /**
+         * Reads a zig-zag encoded 64bit base 128 variable-length integer. Requires Long.js.
+         * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+         *  read if omitted.
+         * @returns {!Long|!{value: Long, length: number}} The value read if offset is omitted, else the value read and
+         *  the actual number of bytes read.
+         * @throws {Error} If it's not a valid varint
+         * @expose
+         */
+        ByteBufferPrototype.readVarint64ZigZag = function(offset) {
+            var val = this.readVarint64(offset);
+            if (val && val['value'] instanceof Long)
+                val["value"] = ByteBuffer.zigZagDecode64(val["value"]);
+            else
+                val = ByteBuffer.zigZagDecode64(val);
+            return val;
+        };
+
+    } // Long
+
+
+    // types/strings/cstring
+
+    /**
+     * Writes a NULL-terminated UTF8 encoded string. For this to work the specified string must not contain any NULL
+     *  characters itself.
+     * @param {string} str String to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  contained in `str` + 1 if omitted.
+     * @returns {!ByteBuffer|number} this if offset is omitted, else the actual number of bytes written
+     * @expose
+     */
+    ByteBufferPrototype.writeCString = function(str, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        var i,
+            k = str.length;
+        if (!this.noAssert) {
+            if (typeof str !== 'string')
+                throw TypeError("Illegal str: Not a string");
+            for (i=0; i<k; ++i) {
+                if (str.charCodeAt(i) === 0)
+                    throw RangeError("Illegal str: Contains NULL-characters");
+            }
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        // UTF8 strings do not contain zero bytes in between except for the zero character, so:
+        k = utfx.calculateUTF16asUTF8(stringSource(str))[1];
+        offset += k+1;
+        var capacity12 = this.buffer.byteLength;
+        if (offset > capacity12)
+            this.resize((capacity12 *= 2) > offset ? capacity12 : offset);
+        offset -= k+1;
+        utfx.encodeUTF16toUTF8(stringSource(str), function(b) {
+            this.view[offset++] = b;
+        }.bind(this));
+        this.view[offset++] = 0;
+        if (relative) {
+            this.offset = offset;
+            return this;
+        }
+        return k;
+    };
+
+    /**
+     * Reads a NULL-terminated UTF8 encoded string. For this to work the string read must not contain any NULL characters
+     *  itself.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {string|!{string: string, length: number}} The string read if offset is omitted, else the string
+     *  read and the actual number of bytes read.
+     * @expose
+     */
+    ByteBufferPrototype.readCString = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        }
+        var start = offset,
+            temp;
+        // UTF8 strings do not contain zero bytes in between except for the zero character itself, so:
+        var sd, b = -1;
+        utfx.decodeUTF8toUTF16(function() {
+            if (b === 0) return null;
+            if (offset >= this.limit)
+                throw RangeError("Illegal range: Truncated data, "+offset+" < "+this.limit);
+            b = this.view[offset++];
+            return b === 0 ? null : b;
+        }.bind(this), sd = stringDestination(), true);
+        if (relative) {
+            this.offset = offset;
+            return sd();
+        } else {
+            return {
+                "string": sd(),
+                "length": offset - start
+            };
+        }
+    };
+
+    // types/strings/istring
+
+    /**
+     * Writes a length as uint32 prefixed UTF8 encoded string.
+     * @param {string} str String to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer|number} `this` if `offset` is omitted, else the actual number of bytes written
+     * @expose
+     * @see ByteBuffer#writeVarint32
+     */
+    ByteBufferPrototype.writeIString = function(str, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof str !== 'string')
+                throw TypeError("Illegal str: Not a string");
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        var start = offset,
+            k;
+        k = utfx.calculateUTF16asUTF8(stringSource(str), this.noAssert)[1];
+        offset += 4+k;
+        var capacity13 = this.buffer.byteLength;
+        if (offset > capacity13)
+            this.resize((capacity13 *= 2) > offset ? capacity13 : offset);
+        offset -= 4+k;
+        if (this.littleEndian) {
+            this.view[offset+3] = (k >>> 24) & 0xFF;
+            this.view[offset+2] = (k >>> 16) & 0xFF;
+            this.view[offset+1] = (k >>>  8) & 0xFF;
+            this.view[offset  ] =  k         & 0xFF;
+        } else {
+            this.view[offset  ] = (k >>> 24) & 0xFF;
+            this.view[offset+1] = (k >>> 16) & 0xFF;
+            this.view[offset+2] = (k >>>  8) & 0xFF;
+            this.view[offset+3] =  k         & 0xFF;
+        }
+        offset += 4;
+        utfx.encodeUTF16toUTF8(stringSource(str), function(b) {
+            this.view[offset++] = b;
+        }.bind(this));
+        if (offset !== start + 4 + k)
+            throw RangeError("Illegal range: Truncated data, "+offset+" == "+(offset+4+k));
+        if (relative) {
+            this.offset = offset;
+            return this;
+        }
+        return offset - start;
+    };
+
+    /**
+     * Reads a length as uint32 prefixed UTF8 encoded string.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {string|!{string: string, length: number}} The string read if offset is omitted, else the string
+     *  read and the actual number of bytes read.
+     * @expose
+     * @see ByteBuffer#readVarint32
+     */
+    ByteBufferPrototype.readIString = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 4 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+4+") <= "+this.buffer.byteLength);
+        }
+        var start = offset;
+        var len = this.readUint32(offset);
+        var str = this.readUTF8String(len, ByteBuffer.METRICS_BYTES, offset += 4);
+        offset += str['length'];
+        if (relative) {
+            this.offset = offset;
+            return str['string'];
+        } else {
+            return {
+                'string': str['string'],
+                'length': offset - start
+            };
+        }
+    };
+
+    // types/strings/utf8string
+
+    /**
+     * Metrics representing number of UTF8 characters. Evaluates to `c`.
+     * @type {string}
+     * @const
+     * @expose
+     */
+    ByteBuffer.METRICS_CHARS = 'c';
+
+    /**
+     * Metrics representing number of bytes. Evaluates to `b`.
+     * @type {string}
+     * @const
+     * @expose
+     */
+    ByteBuffer.METRICS_BYTES = 'b';
+
+    /**
+     * Writes an UTF8 encoded string.
+     * @param {string} str String to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} if omitted.
+     * @returns {!ByteBuffer|number} this if offset is omitted, else the actual number of bytes written.
+     * @expose
+     */
+    ByteBufferPrototype.writeUTF8String = function(str, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        var k;
+        var start = offset;
+        k = utfx.calculateUTF16asUTF8(stringSource(str))[1];
+        offset += k;
+        var capacity14 = this.buffer.byteLength;
+        if (offset > capacity14)
+            this.resize((capacity14 *= 2) > offset ? capacity14 : offset);
+        offset -= k;
+        utfx.encodeUTF16toUTF8(stringSource(str), function(b) {
+            this.view[offset++] = b;
+        }.bind(this));
+        if (relative) {
+            this.offset = offset;
+            return this;
+        }
+        return offset - start;
+    };
+
+    /**
+     * Writes an UTF8 encoded string. This is an alias of {@link ByteBuffer#writeUTF8String}.
+     * @function
+     * @param {string} str String to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} if omitted.
+     * @returns {!ByteBuffer|number} this if offset is omitted, else the actual number of bytes written.
+     * @expose
+     */
+    ByteBufferPrototype.writeString = ByteBufferPrototype.writeUTF8String;
+
+    /**
+     * Calculates the number of UTF8 characters of a string. JavaScript itself uses UTF-16, so that a string's
+     *  `length` property does not reflect its actual UTF8 size if it contains code points larger than 0xFFFF.
+     * @param {string} str String to calculate
+     * @returns {number} Number of UTF8 characters
+     * @expose
+     */
+    ByteBuffer.calculateUTF8Chars = function(str) {
+        return utfx.calculateUTF16asUTF8(stringSource(str))[0];
+    };
+
+    /**
+     * Calculates the number of UTF8 bytes of a string.
+     * @param {string} str String to calculate
+     * @returns {number} Number of UTF8 bytes
+     * @expose
+     */
+    ByteBuffer.calculateUTF8Bytes = function(str) {
+        return utfx.calculateUTF16asUTF8(stringSource(str))[1];
+    };
+
+    /**
+     * Calculates the number of UTF8 bytes of a string. This is an alias of {@link ByteBuffer.calculateUTF8Bytes}.
+     * @function
+     * @param {string} str String to calculate
+     * @returns {number} Number of UTF8 bytes
+     * @expose
+     */
+    ByteBuffer.calculateString = ByteBuffer.calculateUTF8Bytes;
+
+    /**
+     * Reads an UTF8 encoded string.
+     * @param {number} length Number of characters or bytes to read.
+     * @param {string=} metrics Metrics specifying what `length` is meant to count. Defaults to
+     *  {@link ByteBuffer.METRICS_CHARS}.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {string|!{string: string, length: number}} The string read if offset is omitted, else the string
+     *  read and the actual number of bytes read.
+     * @expose
+     */
+    ByteBufferPrototype.readUTF8String = function(length, metrics, offset) {
+        if (typeof metrics === 'number') {
+            offset = metrics;
+            metrics = undefined;
+        }
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (typeof metrics === 'undefined') metrics = ByteBuffer.METRICS_CHARS;
+        if (!this.noAssert) {
+            if (typeof length !== 'number' || length % 1 !== 0)
+                throw TypeError("Illegal length: "+length+" (not an integer)");
+            length |= 0;
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        var i = 0,
+            start = offset,
+            sd;
+        if (metrics === ByteBuffer.METRICS_CHARS) { // The same for node and the browser
+            sd = stringDestination();
+            utfx.decodeUTF8(function() {
+                return i < length && offset < this.limit ? this.view[offset++] : null;
+            }.bind(this), function(cp) {
+                ++i; utfx.UTF8toUTF16(cp, sd);
+            });
+            if (i !== length)
+                throw RangeError("Illegal range: Truncated data, "+i+" == "+length);
+            if (relative) {
+                this.offset = offset;
+                return sd();
+            } else {
+                return {
+                    "string": sd(),
+                    "length": offset - start
+                };
+            }
+        } else if (metrics === ByteBuffer.METRICS_BYTES) {
+            if (!this.noAssert) {
+                if (typeof offset !== 'number' || offset % 1 !== 0)
+                    throw TypeError("Illegal offset: "+offset+" (not an integer)");
+                offset >>>= 0;
+                if (offset < 0 || offset + length > this.buffer.byteLength)
+                    throw RangeError("Illegal offset: 0 <= "+offset+" (+"+length+") <= "+this.buffer.byteLength);
+            }
+            var k = offset + length;
+            utfx.decodeUTF8toUTF16(function() {
+                return offset < k ? this.view[offset++] : null;
+            }.bind(this), sd = stringDestination(), this.noAssert);
+            if (offset !== k)
+                throw RangeError("Illegal range: Truncated data, "+offset+" == "+k);
+            if (relative) {
+                this.offset = offset;
+                return sd();
+            } else {
+                return {
+                    'string': sd(),
+                    'length': offset - start
+                };
+            }
+        } else
+            throw TypeError("Unsupported metrics: "+metrics);
+    };
+
+    /**
+     * Reads an UTF8 encoded string. This is an alias of {@link ByteBuffer#readUTF8String}.
+     * @function
+     * @param {number} length Number of characters or bytes to read
+     * @param {number=} metrics Metrics specifying what `n` is meant to count. Defaults to
+     *  {@link ByteBuffer.METRICS_CHARS}.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {string|!{string: string, length: number}} The string read if offset is omitted, else the string
+     *  read and the actual number of bytes read.
+     * @expose
+     */
+    ByteBufferPrototype.readString = ByteBufferPrototype.readUTF8String;
+
+    // types/strings/vstring
+
+    /**
+     * Writes a length as varint32 prefixed UTF8 encoded string.
+     * @param {string} str String to write
+     * @param {number=} offset Offset to write to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer|number} `this` if `offset` is omitted, else the actual number of bytes written
+     * @expose
+     * @see ByteBuffer#writeVarint32
+     */
+    ByteBufferPrototype.writeVString = function(str, offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof str !== 'string')
+                throw TypeError("Illegal str: Not a string");
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        var start = offset,
+            k, l;
+        k = utfx.calculateUTF16asUTF8(stringSource(str), this.noAssert)[1];
+        l = ByteBuffer.calculateVarint32(k);
+        offset += l+k;
+        var capacity15 = this.buffer.byteLength;
+        if (offset > capacity15)
+            this.resize((capacity15 *= 2) > offset ? capacity15 : offset);
+        offset -= l+k;
+        offset += this.writeVarint32(k, offset);
+        utfx.encodeUTF16toUTF8(stringSource(str), function(b) {
+            this.view[offset++] = b;
+        }.bind(this));
+        if (offset !== start+k+l)
+            throw RangeError("Illegal range: Truncated data, "+offset+" == "+(offset+k+l));
+        if (relative) {
+            this.offset = offset;
+            return this;
+        }
+        return offset - start;
+    };
+
+    /**
+     * Reads a length as varint32 prefixed UTF8 encoded string.
+     * @param {number=} offset Offset to read from. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {string|!{string: string, length: number}} The string read if offset is omitted, else the string
+     *  read and the actual number of bytes read.
+     * @expose
+     * @see ByteBuffer#readVarint32
+     */
+    ByteBufferPrototype.readVString = function(offset) {
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 1 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+1+") <= "+this.buffer.byteLength);
+        }
+        var start = offset;
+        var len = this.readVarint32(offset);
+        var str = this.readUTF8String(len['value'], ByteBuffer.METRICS_BYTES, offset += len['length']);
+        offset += str['length'];
+        if (relative) {
+            this.offset = offset;
+            return str['string'];
+        } else {
+            return {
+                'string': str['string'],
+                'length': offset - start
+            };
+        }
+    };
+
+
+    /**
+     * Appends some data to this ByteBuffer. This will overwrite any contents behind the specified offset up to the appended
+     *  data's length.
+     * @param {!ByteBuffer|!ArrayBuffer|!Uint8Array|string} source Data to append. If `source` is a ByteBuffer, its offsets
+     *  will be modified according to the performed read operation.
+     * @param {(string|number)=} encoding Encoding if `data` is a string ("base64", "hex", "binary", defaults to "utf8")
+     * @param {number=} offset Offset to append at. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     * @example A relative `<01 02>03.append(<04 05>)` will result in `<01 02 04 05>, 04 05|`
+     * @example An absolute `<01 02>03.append(04 05>, 1)` will result in `<01 04>05, 04 05|`
+     */
+    ByteBufferPrototype.append = function(source, encoding, offset) {
+        if (typeof encoding === 'number' || typeof encoding !== 'string') {
+            offset = encoding;
+            encoding = undefined;
+        }
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        if (!(source instanceof ByteBuffer))
+            source = ByteBuffer.wrap(source, encoding);
+        var length = source.limit - source.offset;
+        if (length <= 0) return this; // Nothing to append
+        offset += length;
+        var capacity16 = this.buffer.byteLength;
+        if (offset > capacity16)
+            this.resize((capacity16 *= 2) > offset ? capacity16 : offset);
+        offset -= length;
+        this.view.set(source.view.subarray(source.offset, source.limit), offset);
+        source.offset += length;
+        if (relative) this.offset += length;
+        return this;
+    };
+
+    /**
+     * Appends this ByteBuffer's contents to another ByteBuffer. This will overwrite any contents at and after the
+        specified offset up to the length of this ByteBuffer's data.
+     * @param {!ByteBuffer} target Target ByteBuffer
+     * @param {number=} offset Offset to append to. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  read if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     * @see ByteBuffer#append
+     */
+    ByteBufferPrototype.appendTo = function(target, offset) {
+        target.append(this, offset);
+        return this;
+    };
+
+    /**
+     * Enables or disables assertions of argument types and offsets. Assertions are enabled by default but you can opt to
+     *  disable them if your code already makes sure that everything is valid.
+     * @param {boolean} assert `true` to enable assertions, otherwise `false`
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.assert = function(assert) {
+        this.noAssert = !assert;
+        return this;
+    };
+
+    /**
+     * Gets the capacity of this ByteBuffer's backing buffer.
+     * @returns {number} Capacity of the backing buffer
+     * @expose
+     */
+    ByteBufferPrototype.capacity = function() {
+        return this.buffer.byteLength;
+    };
+    /**
+     * Clears this ByteBuffer's offsets by setting {@link ByteBuffer#offset} to `0` and {@link ByteBuffer#limit} to the
+     *  backing buffer's capacity. Discards {@link ByteBuffer#markedOffset}.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.clear = function() {
+        this.offset = 0;
+        this.limit = this.buffer.byteLength;
+        this.markedOffset = -1;
+        return this;
+    };
+
+    /**
+     * Creates a cloned instance of this ByteBuffer, preset with this ByteBuffer's values for {@link ByteBuffer#offset},
+     *  {@link ByteBuffer#markedOffset} and {@link ByteBuffer#limit}.
+     * @param {boolean=} copy Whether to copy the backing buffer or to return another view on the same, defaults to `false`
+     * @returns {!ByteBuffer} Cloned instance
+     * @expose
+     */
+    ByteBufferPrototype.clone = function(copy) {
+        var bb = new ByteBuffer(0, this.littleEndian, this.noAssert);
+        if (copy) {
+            bb.buffer = new ArrayBuffer(this.buffer.byteLength);
+            bb.view = new Uint8Array(bb.buffer);
+        } else {
+            bb.buffer = this.buffer;
+            bb.view = this.view;
+        }
+        bb.offset = this.offset;
+        bb.markedOffset = this.markedOffset;
+        bb.limit = this.limit;
+        return bb;
+    };
+
+    /**
+     * Compacts this ByteBuffer to be backed by a {@link ByteBuffer#buffer} of its contents' length. Contents are the bytes
+     *  between {@link ByteBuffer#offset} and {@link ByteBuffer#limit}. Will set `offset = 0` and `limit = capacity` and
+     *  adapt {@link ByteBuffer#markedOffset} to the same relative position if set.
+     * @param {number=} begin Offset to start at, defaults to {@link ByteBuffer#offset}
+     * @param {number=} end Offset to end at, defaults to {@link ByteBuffer#limit}
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.compact = function(begin, end) {
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        if (begin === 0 && end === this.buffer.byteLength)
+            return this; // Already compacted
+        var len = end - begin;
+        if (len === 0) {
+            this.buffer = EMPTY_BUFFER;
+            this.view = null;
+            if (this.markedOffset >= 0) this.markedOffset -= begin;
+            this.offset = 0;
+            this.limit = 0;
+            return this;
+        }
+        var buffer = new ArrayBuffer(len);
+        var view = new Uint8Array(buffer);
+        view.set(this.view.subarray(begin, end));
+        this.buffer = buffer;
+        this.view = view;
+        if (this.markedOffset >= 0) this.markedOffset -= begin;
+        this.offset = 0;
+        this.limit = len;
+        return this;
+    };
+
+    /**
+     * Creates a copy of this ByteBuffer's contents. Contents are the bytes between {@link ByteBuffer#offset} and
+     *  {@link ByteBuffer#limit}.
+     * @param {number=} begin Begin offset, defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end End offset, defaults to {@link ByteBuffer#limit}.
+     * @returns {!ByteBuffer} Copy
+     * @expose
+     */
+    ByteBufferPrototype.copy = function(begin, end) {
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        if (begin === end)
+            return new ByteBuffer(0, this.littleEndian, this.noAssert);
+        var capacity = end - begin,
+            bb = new ByteBuffer(capacity, this.littleEndian, this.noAssert);
+        bb.offset = 0;
+        bb.limit = capacity;
+        if (bb.markedOffset >= 0) bb.markedOffset -= begin;
+        this.copyTo(bb, 0, begin, end);
+        return bb;
+    };
+
+    /**
+     * Copies this ByteBuffer's contents to another ByteBuffer. Contents are the bytes between {@link ByteBuffer#offset} and
+     *  {@link ByteBuffer#limit}.
+     * @param {!ByteBuffer} target Target ByteBuffer
+     * @param {number=} targetOffset Offset to copy to. Will use and increase the target's {@link ByteBuffer#offset}
+     *  by the number of bytes copied if omitted.
+     * @param {number=} sourceOffset Offset to start copying from. Will use and increase {@link ByteBuffer#offset} by the
+     *  number of bytes copied if omitted.
+     * @param {number=} sourceLimit Offset to end copying from, defaults to {@link ByteBuffer#limit}
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.copyTo = function(target, targetOffset, sourceOffset, sourceLimit) {
+        var relative,
+            targetRelative;
+        if (!this.noAssert) {
+            if (!ByteBuffer.isByteBuffer(target))
+                throw TypeError("Illegal target: Not a ByteBuffer");
+        }
+        targetOffset = (targetRelative = typeof targetOffset === 'undefined') ? target.offset : targetOffset | 0;
+        sourceOffset = (relative = typeof sourceOffset === 'undefined') ? this.offset : sourceOffset | 0;
+        sourceLimit = typeof sourceLimit === 'undefined' ? this.limit : sourceLimit | 0;
+
+        if (targetOffset < 0 || targetOffset > target.buffer.byteLength)
+            throw RangeError("Illegal target range: 0 <= "+targetOffset+" <= "+target.buffer.byteLength);
+        if (sourceOffset < 0 || sourceLimit > this.buffer.byteLength)
+            throw RangeError("Illegal source range: 0 <= "+sourceOffset+" <= "+this.buffer.byteLength);
+
+        var len = sourceLimit - sourceOffset;
+        if (len === 0)
+            return target; // Nothing to copy
+
+        target.ensureCapacity(targetOffset + len);
+
+        target.view.set(this.view.subarray(sourceOffset, sourceLimit), targetOffset);
+
+        if (relative) this.offset += len;
+        if (targetRelative) target.offset += len;
+
+        return this;
+    };
+
+    /**
+     * Makes sure that this ByteBuffer is backed by a {@link ByteBuffer#buffer} of at least the specified capacity. If the
+     *  current capacity is exceeded, it will be doubled. If double the current capacity is less than the required capacity,
+     *  the required capacity will be used instead.
+     * @param {number} capacity Required capacity
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.ensureCapacity = function(capacity) {
+        var current = this.buffer.byteLength;
+        if (current < capacity)
+            return this.resize((current *= 2) > capacity ? current : capacity);
+        return this;
+    };
+
+    /**
+     * Overwrites this ByteBuffer's contents with the specified value. Contents are the bytes between
+     *  {@link ByteBuffer#offset} and {@link ByteBuffer#limit}.
+     * @param {number|string} value Byte value to fill with. If given as a string, the first character is used.
+     * @param {number=} begin Begin offset. Will use and increase {@link ByteBuffer#offset} by the number of bytes
+     *  written if omitted. defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end End offset, defaults to {@link ByteBuffer#limit}.
+     * @returns {!ByteBuffer} this
+     * @expose
+     * @example `someByteBuffer.clear().fill(0)` fills the entire backing buffer with zeroes
+     */
+    ByteBufferPrototype.fill = function(value, begin, end) {
+        var relative = typeof begin === 'undefined';
+        if (relative) begin = this.offset;
+        if (typeof value === 'string' && value.length > 0)
+            value = value.charCodeAt(0);
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof value !== 'number' || value % 1 !== 0)
+                throw TypeError("Illegal value: "+value+" (not an integer)");
+            value |= 0;
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        if (begin >= end)
+            return this; // Nothing to fill
+        while (begin < end) this.view[begin++] = value;
+        if (relative) this.offset = begin;
+        return this;
+    };
+
+    /**
+     * Makes this ByteBuffer ready for a new sequence of write or relative read operations. Sets `limit = offset` and
+     *  `offset = 0`. Make sure always to flip a ByteBuffer when all relative read or write operations are complete.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.flip = function() {
+        this.limit = this.offset;
+        this.offset = 0;
+        return this;
+    };
+    /**
+     * Marks an offset on this ByteBuffer to be used later.
+     * @param {number=} offset Offset to mark. Defaults to {@link ByteBuffer#offset}.
+     * @returns {!ByteBuffer} this
+     * @throws {TypeError} If `offset` is not a valid number
+     * @throws {RangeError} If `offset` is out of bounds
+     * @see ByteBuffer#reset
+     * @expose
+     */
+    ByteBufferPrototype.mark = function(offset) {
+        offset = typeof offset === 'undefined' ? this.offset : offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        this.markedOffset = offset;
+        return this;
+    };
+    /**
+     * Sets the byte order.
+     * @param {boolean} littleEndian `true` for little endian byte order, `false` for big endian
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.order = function(littleEndian) {
+        if (!this.noAssert) {
+            if (typeof littleEndian !== 'boolean')
+                throw TypeError("Illegal littleEndian: Not a boolean");
+        }
+        this.littleEndian = !!littleEndian;
+        return this;
+    };
+
+    /**
+     * Switches (to) little endian byte order.
+     * @param {boolean=} littleEndian Defaults to `true`, otherwise uses big endian
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.LE = function(littleEndian) {
+        this.littleEndian = typeof littleEndian !== 'undefined' ? !!littleEndian : true;
+        return this;
+    };
+
+    /**
+     * Switches (to) big endian byte order.
+     * @param {boolean=} bigEndian Defaults to `true`, otherwise uses little endian
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.BE = function(bigEndian) {
+        this.littleEndian = typeof bigEndian !== 'undefined' ? !bigEndian : false;
+        return this;
+    };
+    /**
+     * Prepends some data to this ByteBuffer. This will overwrite any contents before the specified offset up to the
+     *  prepended data's length. If there is not enough space available before the specified `offset`, the backing buffer
+     *  will be resized and its contents moved accordingly.
+     * @param {!ByteBuffer|string|!ArrayBuffer} source Data to prepend. If `source` is a ByteBuffer, its offset will be
+     *  modified according to the performed read operation.
+     * @param {(string|number)=} encoding Encoding if `data` is a string ("base64", "hex", "binary", defaults to "utf8")
+     * @param {number=} offset Offset to prepend at. Will use and decrease {@link ByteBuffer#offset} by the number of bytes
+     *  prepended if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     * @example A relative `00<01 02 03>.prepend(<04 05>)` results in `<04 05 01 02 03>, 04 05|`
+     * @example An absolute `00<01 02 03>.prepend(<04 05>, 2)` results in `04<05 02 03>, 04 05|`
+     */
+    ByteBufferPrototype.prepend = function(source, encoding, offset) {
+        if (typeof encoding === 'number' || typeof encoding !== 'string') {
+            offset = encoding;
+            encoding = undefined;
+        }
+        var relative = typeof offset === 'undefined';
+        if (relative) offset = this.offset;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: "+offset+" (not an integer)");
+            offset >>>= 0;
+            if (offset < 0 || offset + 0 > this.buffer.byteLength)
+                throw RangeError("Illegal offset: 0 <= "+offset+" (+"+0+") <= "+this.buffer.byteLength);
+        }
+        if (!(source instanceof ByteBuffer))
+            source = ByteBuffer.wrap(source, encoding);
+        var len = source.limit - source.offset;
+        if (len <= 0) return this; // Nothing to prepend
+        var diff = len - offset;
+        if (diff > 0) { // Not enough space before offset, so resize + move
+            var buffer = new ArrayBuffer(this.buffer.byteLength + diff);
+            var view = new Uint8Array(buffer);
+            view.set(this.view.subarray(offset, this.buffer.byteLength), len);
+            this.buffer = buffer;
+            this.view = view;
+            this.offset += diff;
+            if (this.markedOffset >= 0) this.markedOffset += diff;
+            this.limit += diff;
+            offset += diff;
+        } else {
+            var arrayView = new Uint8Array(this.buffer);
+        }
+        this.view.set(source.view.subarray(source.offset, source.limit), offset - len);
+
+        source.offset = source.limit;
+        if (relative)
+            this.offset -= len;
+        return this;
+    };
+
+    /**
+     * Prepends this ByteBuffer to another ByteBuffer. This will overwrite any contents before the specified offset up to the
+     *  prepended data's length. If there is not enough space available before the specified `offset`, the backing buffer
+     *  will be resized and its contents moved accordingly.
+     * @param {!ByteBuffer} target Target ByteBuffer
+     * @param {number=} offset Offset to prepend at. Will use and decrease {@link ByteBuffer#offset} by the number of bytes
+     *  prepended if omitted.
+     * @returns {!ByteBuffer} this
+     * @expose
+     * @see ByteBuffer#prepend
+     */
+    ByteBufferPrototype.prependTo = function(target, offset) {
+        target.prepend(this, offset);
+        return this;
+    };
+    /**
+     * Prints debug information about this ByteBuffer's contents.
+     * @param {function(string)=} out Output function to call, defaults to console.log
+     * @expose
+     */
+    ByteBufferPrototype.printDebug = function(out) {
+        if (typeof out !== 'function') out = console.log.bind(console);
+        out(
+            this.toString()+"\n"+
+            "-------------------------------------------------------------------\n"+
+            this.toDebug(/* columns */ true)
+        );
+    };
+
+    /**
+     * Gets the number of remaining readable bytes. Contents are the bytes between {@link ByteBuffer#offset} and
+     *  {@link ByteBuffer#limit}, so this returns `limit - offset`.
+     * @returns {number} Remaining readable bytes. May be negative if `offset > limit`.
+     * @expose
+     */
+    ByteBufferPrototype.remaining = function() {
+        return this.limit - this.offset;
+    };
+    /**
+     * Resets this ByteBuffer's {@link ByteBuffer#offset}. If an offset has been marked through {@link ByteBuffer#mark}
+     *  before, `offset` will be set to {@link ByteBuffer#markedOffset}, which will then be discarded. If no offset has been
+     *  marked, sets `offset = 0`.
+     * @returns {!ByteBuffer} this
+     * @see ByteBuffer#mark
+     * @expose
+     */
+    ByteBufferPrototype.reset = function() {
+        if (this.markedOffset >= 0) {
+            this.offset = this.markedOffset;
+            this.markedOffset = -1;
+        } else {
+            this.offset = 0;
+        }
+        return this;
+    };
+    /**
+     * Resizes this ByteBuffer to be backed by a buffer of at least the given capacity. Will do nothing if already that
+     *  large or larger.
+     * @param {number} capacity Capacity required
+     * @returns {!ByteBuffer} this
+     * @throws {TypeError} If `capacity` is not a number
+     * @throws {RangeError} If `capacity < 0`
+     * @expose
+     */
+    ByteBufferPrototype.resize = function(capacity) {
+        if (!this.noAssert) {
+            if (typeof capacity !== 'number' || capacity % 1 !== 0)
+                throw TypeError("Illegal capacity: "+capacity+" (not an integer)");
+            capacity |= 0;
+            if (capacity < 0)
+                throw RangeError("Illegal capacity: 0 <= "+capacity);
+        }
+        if (this.buffer.byteLength < capacity) {
+            var buffer = new ArrayBuffer(capacity);
+            var view = new Uint8Array(buffer);
+            view.set(this.view);
+            this.buffer = buffer;
+            this.view = view;
+        }
+        return this;
+    };
+    /**
+     * Reverses this ByteBuffer's contents.
+     * @param {number=} begin Offset to start at, defaults to {@link ByteBuffer#offset}
+     * @param {number=} end Offset to end at, defaults to {@link ByteBuffer#limit}
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.reverse = function(begin, end) {
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        if (begin === end)
+            return this; // Nothing to reverse
+        Array.prototype.reverse.call(this.view.subarray(begin, end));
+        return this;
+    };
+    /**
+     * Skips the next `length` bytes. This will just advance
+     * @param {number} length Number of bytes to skip. May also be negative to move the offset back.
+     * @returns {!ByteBuffer} this
+     * @expose
+     */
+    ByteBufferPrototype.skip = function(length) {
+        if (!this.noAssert) {
+            if (typeof length !== 'number' || length % 1 !== 0)
+                throw TypeError("Illegal length: "+length+" (not an integer)");
+            length |= 0;
+        }
+        var offset = this.offset + length;
+        if (!this.noAssert) {
+            if (offset < 0 || offset > this.buffer.byteLength)
+                throw RangeError("Illegal length: 0 <= "+this.offset+" + "+length+" <= "+this.buffer.byteLength);
+        }
+        this.offset = offset;
+        return this;
+    };
+
+    /**
+     * Slices this ByteBuffer by creating a cloned instance with `offset = begin` and `limit = end`.
+     * @param {number=} begin Begin offset, defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end End offset, defaults to {@link ByteBuffer#limit}.
+     * @returns {!ByteBuffer} Clone of this ByteBuffer with slicing applied, backed by the same {@link ByteBuffer#buffer}
+     * @expose
+     */
+    ByteBufferPrototype.slice = function(begin, end) {
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        var bb = this.clone();
+        bb.offset = begin;
+        bb.limit = end;
+        return bb;
+    };
+    /**
+     * Returns a copy of the backing buffer that contains this ByteBuffer's contents. Contents are the bytes between
+     *  {@link ByteBuffer#offset} and {@link ByteBuffer#limit}.
+     * @param {boolean=} forceCopy If `true` returns a copy, otherwise returns a view referencing the same memory if
+     *  possible. Defaults to `false`
+     * @returns {!ArrayBuffer} Contents as an ArrayBuffer
+     * @expose
+     */
+    ByteBufferPrototype.toBuffer = function(forceCopy) {
+        var offset = this.offset,
+            limit = this.limit;
+        if (!this.noAssert) {
+            if (typeof offset !== 'number' || offset % 1 !== 0)
+                throw TypeError("Illegal offset: Not an integer");
+            offset >>>= 0;
+            if (typeof limit !== 'number' || limit % 1 !== 0)
+                throw TypeError("Illegal limit: Not an integer");
+            limit >>>= 0;
+            if (offset < 0 || offset > limit || limit > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+offset+" <= "+limit+" <= "+this.buffer.byteLength);
+        }
+        // NOTE: It's not possible to have another ArrayBuffer reference the same memory as the backing buffer. This is
+        // possible with Uint8Array#subarray only, but we have to return an ArrayBuffer by contract. So:
+        if (!forceCopy && offset === 0 && limit === this.buffer.byteLength)
+            return this.buffer;
+        if (offset === limit)
+            return EMPTY_BUFFER;
+        var buffer = new ArrayBuffer(limit - offset);
+        new Uint8Array(buffer).set(new Uint8Array(this.buffer).subarray(offset, limit), 0);
+        return buffer;
+    };
+
+    /**
+     * Returns a raw buffer compacted to contain this ByteBuffer's contents. Contents are the bytes between
+     *  {@link ByteBuffer#offset} and {@link ByteBuffer#limit}. This is an alias of {@link ByteBuffer#toBuffer}.
+     * @function
+     * @param {boolean=} forceCopy If `true` returns a copy, otherwise returns a view referencing the same memory.
+     *  Defaults to `false`
+     * @returns {!ArrayBuffer} Contents as an ArrayBuffer
+     * @expose
+     */
+    ByteBufferPrototype.toArrayBuffer = ByteBufferPrototype.toBuffer;
+
+    /**
+     * Converts the ByteBuffer's contents to a string.
+     * @param {string=} encoding Output encoding. Returns an informative string representation if omitted but also allows
+     *  direct conversion to "utf8", "hex", "base64" and "binary" encoding. "debug" returns a hex representation with
+     *  highlighted offsets.
+     * @param {number=} begin Offset to begin at, defaults to {@link ByteBuffer#offset}
+     * @param {number=} end Offset to end at, defaults to {@link ByteBuffer#limit}
+     * @returns {string} String representation
+     * @throws {Error} If `encoding` is invalid
+     * @expose
+     */
+    ByteBufferPrototype.toString = function(encoding, begin, end) {
+        if (typeof encoding === 'undefined')
+            return "ByteBufferAB(offset="+this.offset+",markedOffset="+this.markedOffset+",limit="+this.limit+",capacity="+this.capacity()+")";
+        if (typeof encoding === 'number')
+            encoding = "utf8",
+            begin = encoding,
+            end = begin;
+        switch (encoding) {
+            case "utf8":
+                return this.toUTF8(begin, end);
+            case "base64":
+                return this.toBase64(begin, end);
+            case "hex":
+                return this.toHex(begin, end);
+            case "binary":
+                return this.toBinary(begin, end);
+            case "debug":
+                return this.toDebug();
+            case "columns":
+                return this.toColumns();
+            default:
+                throw Error("Unsupported encoding: "+encoding);
+        }
+    };
+
+    // lxiv-embeddable
+
+    /**
+     * lxiv-embeddable (c) 2014 Daniel Wirtz <dcode@dcode.io>
+     * Released under the Apache License, Version 2.0
+     * see: https://github.com/dcodeIO/lxiv for details
+     */
+    var lxiv = function() {
+        "use strict";
+
+        /**
+         * lxiv namespace.
+         * @type {!Object.<string,*>}
+         * @exports lxiv
+         */
+        var lxiv = {};
+
+        /**
+         * Character codes for output.
+         * @type {!Array.<number>}
+         * @inner
+         */
+        var aout = [
+            65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
+            81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102,
+            103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118,
+            119, 120, 121, 122, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 43, 47
+        ];
+
+        /**
+         * Character codes for input.
+         * @type {!Array.<number>}
+         * @inner
+         */
+        var ain = [];
+        for (var i=0, k=aout.length; i<k; ++i)
+            ain[aout[i]] = i;
+
+        /**
+         * Encodes bytes to base64 char codes.
+         * @param {!function():number|null} src Bytes source as a function returning the next byte respectively `null` if
+         *  there are no more bytes left.
+         * @param {!function(number)} dst Characters destination as a function successively called with each encoded char
+         *  code.
+         */
+        lxiv.encode = function(src, dst) {
+            var b, t;
+            while ((b = src()) !== null) {
+                dst(aout[(b>>2)&0x3f]);
+                t = (b&0x3)<<4;
+                if ((b = src()) !== null) {
+                    t |= (b>>4)&0xf;
+                    dst(aout[(t|((b>>4)&0xf))&0x3f]);
+                    t = (b&0xf)<<2;
+                    if ((b = src()) !== null)
+                        dst(aout[(t|((b>>6)&0x3))&0x3f]),
+                        dst(aout[b&0x3f]);
+                    else
+                        dst(aout[t&0x3f]),
+                        dst(61);
+                } else
+                    dst(aout[t&0x3f]),
+                    dst(61),
+                    dst(61);
+            }
+        };
+
+        /**
+         * Decodes base64 char codes to bytes.
+         * @param {!function():number|null} src Characters source as a function returning the next char code respectively
+         *  `null` if there are no more characters left.
+         * @param {!function(number)} dst Bytes destination as a function successively called with the next byte.
+         * @throws {Error} If a character code is invalid
+         */
+        lxiv.decode = function(src, dst) {
+            var c, t1, t2;
+            function fail(c) {
+                throw Error("Illegal character code: "+c);
+            }
+            while ((c = src()) !== null) {
+                t1 = ain[c];
+                if (typeof t1 === 'undefined') fail(c);
+                if ((c = src()) !== null) {
+                    t2 = ain[c];
+                    if (typeof t2 === 'undefined') fail(c);
+                    dst((t1<<2)>>>0|(t2&0x30)>>4);
+                    if ((c = src()) !== null) {
+                        t1 = ain[c];
+                        if (typeof t1 === 'undefined')
+                            if (c === 61) break; else fail(c);
+                        dst(((t2&0xf)<<4)>>>0|(t1&0x3c)>>2);
+                        if ((c = src()) !== null) {
+                            t2 = ain[c];
+                            if (typeof t2 === 'undefined')
+                                if (c === 61) break; else fail(c);
+                            dst(((t1&0x3)<<6)>>>0|t2);
+                        }
+                    }
+                }
+            }
+        };
+
+        /**
+         * Tests if a string is valid base64.
+         * @param {string} str String to test
+         * @returns {boolean} `true` if valid, otherwise `false`
+         */
+        lxiv.test = function(str) {
+            return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(str);
+        };
+
+        return lxiv;
+    }();
+
+    // encodings/base64
+
+    /**
+     * Encodes this ByteBuffer's contents to a base64 encoded string.
+     * @param {number=} begin Offset to begin at, defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end Offset to end at, defaults to {@link ByteBuffer#limit}.
+     * @returns {string} Base64 encoded string
+     * @throws {RangeError} If `begin` or `end` is out of bounds
+     * @expose
+     */
+    ByteBufferPrototype.toBase64 = function(begin, end) {
+        if (typeof begin === 'undefined')
+            begin = this.offset;
+        if (typeof end === 'undefined')
+            end = this.limit;
+        begin = begin | 0; end = end | 0;
+        if (begin < 0 || end > this.capacity || begin > end)
+            throw RangeError("begin, end");
+        var sd; lxiv.encode(function() {
+            return begin < end ? this.view[begin++] : null;
+        }.bind(this), sd = stringDestination());
+        return sd();
+    };
+
+    /**
+     * Decodes a base64 encoded string to a ByteBuffer.
+     * @param {string} str String to decode
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @returns {!ByteBuffer} ByteBuffer
+     * @expose
+     */
+    ByteBuffer.fromBase64 = function(str, littleEndian) {
+        if (typeof str !== 'string')
+            throw TypeError("str");
+        var bb = new ByteBuffer(str.length/4*3, littleEndian),
+            i = 0;
+        lxiv.decode(stringSource(str), function(b) {
+            bb.view[i++] = b;
+        });
+        bb.limit = i;
+        return bb;
+    };
+
+    /**
+     * Encodes a binary string to base64 like `window.btoa` does.
+     * @param {string} str Binary string
+     * @returns {string} Base64 encoded string
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/Window.btoa
+     * @expose
+     */
+    ByteBuffer.btoa = function(str) {
+        return ByteBuffer.fromBinary(str).toBase64();
+    };
+
+    /**
+     * Decodes a base64 encoded string to binary like `window.atob` does.
+     * @param {string} b64 Base64 encoded string
+     * @returns {string} Binary string
+     * @see https://developer.mozilla.org/en-US/docs/Web/API/Window.atob
+     * @expose
+     */
+    ByteBuffer.atob = function(b64) {
+        return ByteBuffer.fromBase64(b64).toBinary();
+    };
+
+    // encodings/binary
+
+    /**
+     * Encodes this ByteBuffer to a binary encoded string, that is using only characters 0x00-0xFF as bytes.
+     * @param {number=} begin Offset to begin at. Defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end Offset to end at. Defaults to {@link ByteBuffer#limit}.
+     * @returns {string} Binary encoded string
+     * @throws {RangeError} If `offset > limit`
+     * @expose
+     */
+    ByteBufferPrototype.toBinary = function(begin, end) {
+        if (typeof begin === 'undefined')
+            begin = this.offset;
+        if (typeof end === 'undefined')
+            end = this.limit;
+        begin |= 0; end |= 0;
+        if (begin < 0 || end > this.capacity() || begin > end)
+            throw RangeError("begin, end");
+        if (begin === end)
+            return "";
+        var chars = [],
+            parts = [];
+        while (begin < end) {
+            chars.push(this.view[begin++]);
+            if (chars.length >= 1024)
+                parts.push(String.fromCharCode.apply(String, chars)),
+                chars = [];
+        }
+        return parts.join('') + String.fromCharCode.apply(String, chars);
+    };
+
+    /**
+     * Decodes a binary encoded string, that is using only characters 0x00-0xFF as bytes, to a ByteBuffer.
+     * @param {string} str String to decode
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @returns {!ByteBuffer} ByteBuffer
+     * @expose
+     */
+    ByteBuffer.fromBinary = function(str, littleEndian) {
+        if (typeof str !== 'string')
+            throw TypeError("str");
+        var i = 0,
+            k = str.length,
+            charCode,
+            bb = new ByteBuffer(k, littleEndian);
+        while (i<k) {
+            charCode = str.charCodeAt(i);
+            if (charCode > 0xff)
+                throw RangeError("illegal char code: "+charCode);
+            bb.view[i++] = charCode;
+        }
+        bb.limit = k;
+        return bb;
+    };
+
+    // encodings/debug
+
+    /**
+     * Encodes this ByteBuffer to a hex encoded string with marked offsets. Offset symbols are:
+     * * `<` : offset,
+     * * `'` : markedOffset,
+     * * `>` : limit,
+     * * `|` : offset and limit,
+     * * `[` : offset and markedOffset,
+     * * `]` : markedOffset and limit,
+     * * `!` : offset, markedOffset and limit
+     * @param {boolean=} columns If `true` returns two columns hex + ascii, defaults to `false`
+     * @returns {string|!Array.<string>} Debug string or array of lines if `asArray = true`
+     * @expose
+     * @example `>00'01 02<03` contains four bytes with `limit=0, markedOffset=1, offset=3`
+     * @example `00[01 02 03>` contains four bytes with `offset=markedOffset=1, limit=4`
+     * @example `00|01 02 03` contains four bytes with `offset=limit=1, markedOffset=-1`
+     * @example `|` contains zero bytes with `offset=limit=0, markedOffset=-1`
+     */
+    ByteBufferPrototype.toDebug = function(columns) {
+        var i = -1,
+            k = this.buffer.byteLength,
+            b,
+            hex = "",
+            asc = "",
+            out = "";
+        while (i<k) {
+            if (i !== -1) {
+                b = this.view[i];
+                if (b < 0x10) hex += "0"+b.toString(16).toUpperCase();
+                else hex += b.toString(16).toUpperCase();
+                if (columns)
+                    asc += b > 32 && b < 127 ? String.fromCharCode(b) : '.';
+            }
+            ++i;
+            if (columns) {
+                if (i > 0 && i % 16 === 0 && i !== k) {
+                    while (hex.length < 3*16+3) hex += " ";
+                    out += hex+asc+"\n";
+                    hex = asc = "";
+                }
+            }
+            if (i === this.offset && i === this.limit)
+                hex += i === this.markedOffset ? "!" : "|";
+            else if (i === this.offset)
+                hex += i === this.markedOffset ? "[" : "<";
+            else if (i === this.limit)
+                hex += i === this.markedOffset ? "]" : ">";
+            else
+                hex += i === this.markedOffset ? "'" : (columns || (i !== 0 && i !== k) ? " " : "");
+        }
+        if (columns && hex !== " ") {
+            while (hex.length < 3*16+3)
+                hex += " ";
+            out += hex + asc + "\n";
+        }
+        return columns ? out : hex;
+    };
+
+    /**
+     * Decodes a hex encoded string with marked offsets to a ByteBuffer.
+     * @param {string} str Debug string to decode (not be generated with `columns = true`)
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer} ByteBuffer
+     * @expose
+     * @see ByteBuffer#toDebug
+     */
+    ByteBuffer.fromDebug = function(str, littleEndian, noAssert) {
+        var k = str.length,
+            bb = new ByteBuffer(((k+1)/3)|0, littleEndian, noAssert);
+        var i = 0, j = 0, ch, b,
+            rs = false, // Require symbol next
+            ho = false, hm = false, hl = false, // Already has offset (ho), markedOffset (hm), limit (hl)?
+            fail = false;
+        while (i<k) {
+            switch (ch = str.charAt(i++)) {
+                case '!':
+                    if (!noAssert) {
+                        if (ho || hm || hl) {
+                            fail = true;
+                            break;
+                        }
+                        ho = hm = hl = true;
+                    }
+                    bb.offset = bb.markedOffset = bb.limit = j;
+                    rs = false;
+                    break;
+                case '|':
+                    if (!noAssert) {
+                        if (ho || hl) {
+                            fail = true;
+                            break;
+                        }
+                        ho = hl = true;
+                    }
+                    bb.offset = bb.limit = j;
+                    rs = false;
+                    break;
+                case '[':
+                    if (!noAssert) {
+                        if (ho || hm) {
+                            fail = true;
+                            break;
+                        }
+                        ho = hm = true;
+                    }
+                    bb.offset = bb.markedOffset = j;
+                    rs = false;
+                    break;
+                case '<':
+                    if (!noAssert) {
+                        if (ho) {
+                            fail = true;
+                            break;
+                        }
+                        ho = true;
+                    }
+                    bb.offset = j;
+                    rs = false;
+                    break;
+                case ']':
+                    if (!noAssert) {
+                        if (hl || hm) {
+                            fail = true;
+                            break;
+                        }
+                        hl = hm = true;
+                    }
+                    bb.limit = bb.markedOffset = j;
+                    rs = false;
+                    break;
+                case '>':
+                    if (!noAssert) {
+                        if (hl) {
+                            fail = true;
+                            break;
+                        }
+                        hl = true;
+                    }
+                    bb.limit = j;
+                    rs = false;
+                    break;
+                case "'":
+                    if (!noAssert) {
+                        if (hm) {
+                            fail = true;
+                            break;
+                        }
+                        hm = true;
+                    }
+                    bb.markedOffset = j;
+                    rs = false;
+                    break;
+                case ' ':
+                    rs = false;
+                    break;
+                default:
+                    if (!noAssert) {
+                        if (rs) {
+                            fail = true;
+                            break;
+                        }
+                    }
+                    b = parseInt(ch+str.charAt(i++), 16);
+                    if (!noAssert) {
+                        if (isNaN(b) || b < 0 || b > 255)
+                            throw TypeError("Illegal str: Not a debug encoded string");
+                    }
+                    bb.view[j++] = b;
+                    rs = true;
+            }
+            if (fail)
+                throw TypeError("Illegal str: Invalid symbol at "+i);
+        }
+        if (!noAssert) {
+            if (!ho || !hl)
+                throw TypeError("Illegal str: Missing offset or limit");
+            if (j<bb.buffer.byteLength)
+                throw TypeError("Illegal str: Not a debug encoded string (is it hex?) "+j+" < "+k);
+        }
+        return bb;
+    };
+
+    // encodings/hex
+
+    /**
+     * Encodes this ByteBuffer's contents to a hex encoded string.
+     * @param {number=} begin Offset to begin at. Defaults to {@link ByteBuffer#offset}.
+     * @param {number=} end Offset to end at. Defaults to {@link ByteBuffer#limit}.
+     * @returns {string} Hex encoded string
+     * @expose
+     */
+    ByteBufferPrototype.toHex = function(begin, end) {
+        begin = typeof begin === 'undefined' ? this.offset : begin;
+        end = typeof end === 'undefined' ? this.limit : end;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        var out = new Array(end - begin),
+            b;
+        while (begin < end) {
+            b = this.view[begin++];
+            if (b < 0x10)
+                out.push("0", b.toString(16));
+            else out.push(b.toString(16));
+        }
+        return out.join('');
+    };
+
+    /**
+     * Decodes a hex encoded string to a ByteBuffer.
+     * @param {string} str String to decode
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer} ByteBuffer
+     * @expose
+     */
+    ByteBuffer.fromHex = function(str, littleEndian, noAssert) {
+        if (!noAssert) {
+            if (typeof str !== 'string')
+                throw TypeError("Illegal str: Not a string");
+            if (str.length % 2 !== 0)
+                throw TypeError("Illegal str: Length not a multiple of 2");
+        }
+        var k = str.length,
+            bb = new ByteBuffer((k / 2) | 0, littleEndian),
+            b;
+        for (var i=0, j=0; i<k; i+=2) {
+            b = parseInt(str.substring(i, i+2), 16);
+            if (!noAssert)
+                if (!isFinite(b) || b < 0 || b > 255)
+                    throw TypeError("Illegal str: Contains non-hex characters");
+            bb.view[j++] = b;
+        }
+        bb.limit = j;
+        return bb;
+    };
+
+    // utfx-embeddable
+
+    /**
+     * utfx-embeddable (c) 2014 Daniel Wirtz <dcode@dcode.io>
+     * Released under the Apache License, Version 2.0
+     * see: https://github.com/dcodeIO/utfx for details
+     */
+    var utfx = function() {
+        "use strict";
+
+        /**
+         * utfx namespace.
+         * @inner
+         * @type {!Object.<string,*>}
+         */
+        var utfx = {};
+
+        /**
+         * Maximum valid code point.
+         * @type {number}
+         * @const
+         */
+        utfx.MAX_CODEPOINT = 0x10FFFF;
+
+        /**
+         * Encodes UTF8 code points to UTF8 bytes.
+         * @param {(!function():number|null) | number} src Code points source, either as a function returning the next code point
+         *  respectively `null` if there are no more code points left or a single numeric code point.
+         * @param {!function(number)} dst Bytes destination as a function successively called with the next byte
+         */
+        utfx.encodeUTF8 = function(src, dst) {
+            var cp = null;
+            if (typeof src === 'number')
+                cp = src,
+                src = function() { return null; };
+            while (cp !== null || (cp = src()) !== null) {
+                if (cp < 0x80)
+                    dst(cp&0x7F);
+                else if (cp < 0x800)
+                    dst(((cp>>6)&0x1F)|0xC0),
+                    dst((cp&0x3F)|0x80);
+                else if (cp < 0x10000)
+                    dst(((cp>>12)&0x0F)|0xE0),
+                    dst(((cp>>6)&0x3F)|0x80),
+                    dst((cp&0x3F)|0x80);
+                else
+                    dst(((cp>>18)&0x07)|0xF0),
+                    dst(((cp>>12)&0x3F)|0x80),
+                    dst(((cp>>6)&0x3F)|0x80),
+                    dst((cp&0x3F)|0x80);
+                cp = null;
+            }
+        };
+
+        /**
+         * Decodes UTF8 bytes to UTF8 code points.
+         * @param {!function():number|null} src Bytes source as a function returning the next byte respectively `null` if there
+         *  are no more bytes left.
+         * @param {!function(number)} dst Code points destination as a function successively called with each decoded code point.
+         * @throws {RangeError} If a starting byte is invalid in UTF8
+         * @throws {Error} If the last sequence is truncated. Has an array property `bytes` holding the
+         *  remaining bytes.
+         */
+        utfx.decodeUTF8 = function(src, dst) {
+            var a, b, c, d, fail = function(b) {
+                b = b.slice(0, b.indexOf(null));
+                var err = Error(b.toString());
+                err.name = "TruncatedError";
+                err['bytes'] = b;
+                throw err;
+            };
+            while ((a = src()) !== null) {
+                if ((a&0x80) === 0)
+                    dst(a);
+                else if ((a&0xE0) === 0xC0)
+                    ((b = src()) === null) && fail([a, b]),
+                    dst(((a&0x1F)<<6) | (b&0x3F));
+                else if ((a&0xF0) === 0xE0)
+                    ((b=src()) === null || (c=src()) === null) && fail([a, b, c]),
+                    dst(((a&0x0F)<<12) | ((b&0x3F)<<6) | (c&0x3F));
+                else if ((a&0xF8) === 0xF0)
+                    ((b=src()) === null || (c=src()) === null || (d=src()) === null) && fail([a, b, c ,d]),
+                    dst(((a&0x07)<<18) | ((b&0x3F)<<12) | ((c&0x3F)<<6) | (d&0x3F));
+                else throw RangeError("Illegal starting byte: "+a);
+            }
+        };
+
+        /**
+         * Converts UTF16 characters to UTF8 code points.
+         * @param {!function():number|null} src Characters source as a function returning the next char code respectively
+         *  `null` if there are no more characters left.
+         * @param {!function(number)} dst Code points destination as a function successively called with each converted code
+         *  point.
+         */
+        utfx.UTF16toUTF8 = function(src, dst) {
+            var c1, c2 = null;
+            while (true) {
+                if ((c1 = c2 !== null ? c2 : src()) === null)
+                    break;
+                if (c1 >= 0xD800 && c1 <= 0xDFFF) {
+                    if ((c2 = src()) !== null) {
+                        if (c2 >= 0xDC00 && c2 <= 0xDFFF) {
+                            dst((c1-0xD800)*0x400+c2-0xDC00+0x10000);
+                            c2 = null; continue;
+                        }
+                    }
+                }
+                dst(c1);
+            }
+            if (c2 !== null) dst(c2);
+        };
+
+        /**
+         * Converts UTF8 code points to UTF16 characters.
+         * @param {(!function():number|null) | number} src Code points source, either as a function returning the next code point
+         *  respectively `null` if there are no more code points left or a single numeric code point.
+         * @param {!function(number)} dst Characters destination as a function successively called with each converted char code.
+         * @throws {RangeError} If a code point is out of range
+         */
+        utfx.UTF8toUTF16 = function(src, dst) {
+            var cp = null;
+            if (typeof src === 'number')
+                cp = src, src = function() { return null; };
+            while (cp !== null || (cp = src()) !== null) {
+                if (cp <= 0xFFFF)
+                    dst(cp);
+                else
+                    cp -= 0x10000,
+                    dst((cp>>10)+0xD800),
+                    dst((cp%0x400)+0xDC00);
+                cp = null;
+            }
+        };
+
+        /**
+         * Converts and encodes UTF16 characters to UTF8 bytes.
+         * @param {!function():number|null} src Characters source as a function returning the next char code respectively `null`
+         *  if there are no more characters left.
+         * @param {!function(number)} dst Bytes destination as a function successively called with the next byte.
+         */
+        utfx.encodeUTF16toUTF8 = function(src, dst) {
+            utfx.UTF16toUTF8(src, function(cp) {
+                utfx.encodeUTF8(cp, dst);
+            });
+        };
+
+        /**
+         * Decodes and converts UTF8 bytes to UTF16 characters.
+         * @param {!function():number|null} src Bytes source as a function returning the next byte respectively `null` if there
+         *  are no more bytes left.
+         * @param {!function(number)} dst Characters destination as a function successively called with each converted char code.
+         * @throws {RangeError} If a starting byte is invalid in UTF8
+         * @throws {Error} If the last sequence is truncated. Has an array property `bytes` holding the remaining bytes.
+         */
+        utfx.decodeUTF8toUTF16 = function(src, dst) {
+            utfx.decodeUTF8(src, function(cp) {
+                utfx.UTF8toUTF16(cp, dst);
+            });
+        };
+
+        /**
+         * Calculates the byte length of an UTF8 code point.
+         * @param {number} cp UTF8 code point
+         * @returns {number} Byte length
+         */
+        utfx.calculateCodePoint = function(cp) {
+            return (cp < 0x80) ? 1 : (cp < 0x800) ? 2 : (cp < 0x10000) ? 3 : 4;
+        };
+
+        /**
+         * Calculates the number of UTF8 bytes required to store UTF8 code points.
+         * @param {(!function():number|null)} src Code points source as a function returning the next code point respectively
+         *  `null` if there are no more code points left.
+         * @returns {number} The number of UTF8 bytes required
+         */
+        utfx.calculateUTF8 = function(src) {
+            var cp, l=0;
+            while ((cp = src()) !== null)
+                l += (cp < 0x80) ? 1 : (cp < 0x800) ? 2 : (cp < 0x10000) ? 3 : 4;
+            return l;
+        };
+
+        /**
+         * Calculates the number of UTF8 code points respectively UTF8 bytes required to store UTF16 char codes.
+         * @param {(!function():number|null)} src Characters source as a function returning the next char code respectively
+         *  `null` if there are no more characters left.
+         * @returns {!Array.<number>} The number of UTF8 code points at index 0 and the number of UTF8 bytes required at index 1.
+         */
+        utfx.calculateUTF16asUTF8 = function(src) {
+            var n=0, l=0;
+            utfx.UTF16toUTF8(src, function(cp) {
+                ++n; l += (cp < 0x80) ? 1 : (cp < 0x800) ? 2 : (cp < 0x10000) ? 3 : 4;
+            });
+            return [n,l];
+        };
+
+        return utfx;
+    }();
+
+    // encodings/utf8
+
+    /**
+     * Encodes this ByteBuffer's contents between {@link ByteBuffer#offset} and {@link ByteBuffer#limit} to an UTF8 encoded
+     *  string.
+     * @returns {string} Hex encoded string
+     * @throws {RangeError} If `offset > limit`
+     * @expose
+     */
+    ByteBufferPrototype.toUTF8 = function(begin, end) {
+        if (typeof begin === 'undefined') begin = this.offset;
+        if (typeof end === 'undefined') end = this.limit;
+        if (!this.noAssert) {
+            if (typeof begin !== 'number' || begin % 1 !== 0)
+                throw TypeError("Illegal begin: Not an integer");
+            begin >>>= 0;
+            if (typeof end !== 'number' || end % 1 !== 0)
+                throw TypeError("Illegal end: Not an integer");
+            end >>>= 0;
+            if (begin < 0 || begin > end || end > this.buffer.byteLength)
+                throw RangeError("Illegal range: 0 <= "+begin+" <= "+end+" <= "+this.buffer.byteLength);
+        }
+        var sd; try {
+            utfx.decodeUTF8toUTF16(function() {
+                return begin < end ? this.view[begin++] : null;
+            }.bind(this), sd = stringDestination());
+        } catch (e) {
+            if (begin !== end)
+                throw RangeError("Illegal range: Truncated data, "+begin+" != "+end);
+        }
+        return sd();
+    };
+
+    /**
+     * Decodes an UTF8 encoded string to a ByteBuffer.
+     * @param {string} str String to decode
+     * @param {boolean=} littleEndian Whether to use little or big endian byte order. Defaults to
+     *  {@link ByteBuffer.DEFAULT_ENDIAN}.
+     * @param {boolean=} noAssert Whether to skip assertions of offsets and values. Defaults to
+     *  {@link ByteBuffer.DEFAULT_NOASSERT}.
+     * @returns {!ByteBuffer} ByteBuffer
+     * @expose
+     */
+    ByteBuffer.fromUTF8 = function(str, littleEndian, noAssert) {
+        if (!noAssert)
+            if (typeof str !== 'string')
+                throw TypeError("Illegal str: Not a string");
+        var bb = new ByteBuffer(utfx.calculateUTF16asUTF8(stringSource(str), true)[1], littleEndian, noAssert),
+            i = 0;
+        utfx.encodeUTF16toUTF8(stringSource(str), function(b) {
+            bb.view[i++] = b;
+        });
+        bb.limit = i;
+        return bb;
+    };
+
+    return ByteBuffer;
 });
-},{"./_export":23,"./_task":33}],36:[function(_dereq_,module,exports){
+
+},{"long":58}],22:[function(require,module,exports){
+(function (Buffer){
+"use strict";
+
+(function() {
+  var PNGHEADER_BASE64,
+    bufferpack,
+    crc,
+    ignoreChunkTypes,
+    revertCgBIBuffer,
+    streamToBuffer,
+    streamifier,
+    zlib,
+    indexOf =
+      [].indexOf ||
+      function(item) {
+        for (var i = 0, l = this.length; i < l; i++) {
+          if (i in this && this[i] === item) return i;
+        }
+        return -1;
+      };
+
+  streamToBuffer = require("stream-to-buffer");
+
+  bufferpack = require("bufferpack");
+
+  streamifier = require("streamifier");
+
+  zlib = require("zlib");
+
+  crc = require("crc");
+
+  PNGHEADER_BASE64 = "iVBORw0KGgo=";
+
+  ignoreChunkTypes = ["CgBI", "iDOT"];
+
+  module.exports = function(stream, callback) {
+    return streamToBuffer(stream, function(err, buffer) {
+      var output;
+      if (err) {
+        return callback(err);
+      }
+      try {
+        output = revertCgBIBuffer(buffer);
+        return callback(null, streamifier.createReadStream(output));
+      } catch (e) {
+        return callback(e);
+      }
+    });
+  };
+
+  module.exports.revert = revertCgBIBuffer = function(buffer) {
+    let isIphoneCompressed = false;
+    let offset = 0;
+    let chunks = [];
+    let idatCgbiData = new Buffer(0);
+    let headerData = buffer.slice(0, 8);
+    let ref,
+      width,
+      height,
+      chunk,
+      uncompressed,
+      newData,
+      j,
+      y,
+      ref1,
+      ref2,
+      k,
+      x,
+      idatData,
+      chunkCRC,
+      idat_chunk;
+    offset += 8;
+    if (headerData.toString("base64") !== PNGHEADER_BASE64) {
+      throw new Error("not a png file");
+    }
+    while (offset < buffer.length) {
+      chunk = {};
+      let data = buffer.slice(offset, offset + 4);
+      offset += 4;
+      chunk.length = bufferpack.unpack("L>", data, 0)[0];
+      data = buffer.slice(offset, offset + 4);
+      offset += 4;
+      chunk.type = data.toString();
+      chunk.data = data = buffer.slice(offset, offset + chunk.length);
+      offset += chunk.length;
+      let dataCrc = buffer.slice(offset, offset + 4);
+      offset += 4;
+      chunk.crc = bufferpack.unpack("L>", dataCrc, 0)[0];
+      if (chunk.type === "CgBI") {
+        isIphoneCompressed = true;
+      }
+      if (((ref = chunk.type), indexOf.call(ignoreChunkTypes, ref) >= 0)) {
+        continue;
+      }
+      if (chunk.type === "IHDR") {
+        width = bufferpack.unpack("L>", data)[0];
+        height = bufferpack.unpack("L>", data, 4)[0];
+      }
+      if (chunk.type === "IDAT" && isIphoneCompressed) {
+        idatCgbiData = Buffer.concat([idatCgbiData, data]);
+        continue;
+      }
+      if (chunk.type === "IEND" && isIphoneCompressed) {
+        uncompressed = zlib.inflateRawSync(idatCgbiData);
+        newData = new Buffer(uncompressed.length);
+        let i = 0;
+        for (
+          y = j = 0, ref1 = height - 1;
+          0 <= ref1 ? j <= ref1 : j >= ref1;
+          y = 0 <= ref1 ? ++j : --j
+        ) {
+          newData[i] = uncompressed[i];
+          i++;
+          for (
+            x = k = 0, ref2 = width - 1;
+            0 <= ref2 ? k <= ref2 : k >= ref2;
+            x = 0 <= ref2 ? ++k : --k
+          ) {
+            newData[i + 0] = uncompressed[i + 2];
+            newData[i + 1] = uncompressed[i + 1];
+            newData[i + 2] = uncompressed[i + 0];
+            newData[i + 3] = uncompressed[i + 3];
+            i += 4;
+          }
+        }
+        idatData = zlib.deflateSync(newData);
+        chunkCRC = crc.crc32("IDAT");
+        chunkCRC = crc.crc32(idatData, chunkCRC);
+        chunkCRC = (chunkCRC + 0x100000000) % 0x100000000;
+        idat_chunk = {
+          type: "IDAT",
+          length: idatData.length,
+          data: idatData,
+          crc: chunkCRC
+        };
+        chunks.push(idat_chunk);
+      }
+      chunks.push(chunk);
+    }
+    let output = headerData;
+    for (let l = 0, len = chunks.length; l < len; l++) {
+      chunk = chunks[l];
+      output = Buffer.concat([output, bufferpack.pack("L>", [chunk.length])]);
+      output = Buffer.concat([output, new Buffer(chunk.type)]);
+      if (chunk.length > 0) {
+        output = Buffer.concat([output, new Buffer(chunk.data)]);
+      }
+      output = Buffer.concat([output, bufferpack.pack("L>", [chunk.crc])]);
+    }
+    return output;
+  };
+}.call(this));
+
+}).call(this,require("buffer").Buffer)
+
+},{"buffer":17,"bufferpack":20,"crc":48,"stream-to-buffer":87,"streamifier":89,"zlib":15}],23:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5764,9 +12009,556 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 
-}).call(this,{"isBuffer":_dereq_("../../is-buffer/index.js")})
+}).call(this,{"isBuffer":require("../../is-buffer/index.js")})
 
-},{"../../is-buffer/index.js":40}],37:[function(_dereq_,module,exports){
+},{"../../is-buffer/index.js":51}],24:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc1').default;
+
+},{"./es6/crc1":35}],25:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc16').default;
+
+},{"./es6/crc16":36}],26:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc16ccitt').default;
+
+},{"./es6/crc16ccitt":37}],27:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc16kermit').default;
+
+},{"./es6/crc16kermit":38}],28:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc16modbus').default;
+
+},{"./es6/crc16modbus":39}],29:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc16xmodem').default;
+
+},{"./es6/crc16xmodem":40}],30:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc24').default;
+
+},{"./es6/crc24":41}],31:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc32').default;
+
+},{"./es6/crc32":42}],32:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc8').default;
+
+},{"./es6/crc8":43}],33:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crc81wire').default;
+
+},{"./es6/crc81wire":44}],34:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./es6/crcjam').default;
+
+},{"./es6/crcjam":45}],35:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var crc1 = (0, _define_crc2.default)('crc1', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = ~~previous;
+  var accum = 0;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    accum += byte;
+  }
+
+  crc += accum % 256;
+  return crc % 256;
+});
+
+exports.default = crc1;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],36:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=crc-16 --generate=c`
+// prettier-ignore
+var TABLE = [0x0000, 0xc0c1, 0xc181, 0x0140, 0xc301, 0x03c0, 0x0280, 0xc241, 0xc601, 0x06c0, 0x0780, 0xc741, 0x0500, 0xc5c1, 0xc481, 0x0440, 0xcc01, 0x0cc0, 0x0d80, 0xcd41, 0x0f00, 0xcfc1, 0xce81, 0x0e40, 0x0a00, 0xcac1, 0xcb81, 0x0b40, 0xc901, 0x09c0, 0x0880, 0xc841, 0xd801, 0x18c0, 0x1980, 0xd941, 0x1b00, 0xdbc1, 0xda81, 0x1a40, 0x1e00, 0xdec1, 0xdf81, 0x1f40, 0xdd01, 0x1dc0, 0x1c80, 0xdc41, 0x1400, 0xd4c1, 0xd581, 0x1540, 0xd701, 0x17c0, 0x1680, 0xd641, 0xd201, 0x12c0, 0x1380, 0xd341, 0x1100, 0xd1c1, 0xd081, 0x1040, 0xf001, 0x30c0, 0x3180, 0xf141, 0x3300, 0xf3c1, 0xf281, 0x3240, 0x3600, 0xf6c1, 0xf781, 0x3740, 0xf501, 0x35c0, 0x3480, 0xf441, 0x3c00, 0xfcc1, 0xfd81, 0x3d40, 0xff01, 0x3fc0, 0x3e80, 0xfe41, 0xfa01, 0x3ac0, 0x3b80, 0xfb41, 0x3900, 0xf9c1, 0xf881, 0x3840, 0x2800, 0xe8c1, 0xe981, 0x2940, 0xeb01, 0x2bc0, 0x2a80, 0xea41, 0xee01, 0x2ec0, 0x2f80, 0xef41, 0x2d00, 0xedc1, 0xec81, 0x2c40, 0xe401, 0x24c0, 0x2580, 0xe541, 0x2700, 0xe7c1, 0xe681, 0x2640, 0x2200, 0xe2c1, 0xe381, 0x2340, 0xe101, 0x21c0, 0x2080, 0xe041, 0xa001, 0x60c0, 0x6180, 0xa141, 0x6300, 0xa3c1, 0xa281, 0x6240, 0x6600, 0xa6c1, 0xa781, 0x6740, 0xa501, 0x65c0, 0x6480, 0xa441, 0x6c00, 0xacc1, 0xad81, 0x6d40, 0xaf01, 0x6fc0, 0x6e80, 0xae41, 0xaa01, 0x6ac0, 0x6b80, 0xab41, 0x6900, 0xa9c1, 0xa881, 0x6840, 0x7800, 0xb8c1, 0xb981, 0x7940, 0xbb01, 0x7bc0, 0x7a80, 0xba41, 0xbe01, 0x7ec0, 0x7f80, 0xbf41, 0x7d00, 0xbdc1, 0xbc81, 0x7c40, 0xb401, 0x74c0, 0x7580, 0xb541, 0x7700, 0xb7c1, 0xb681, 0x7640, 0x7200, 0xb2c1, 0xb381, 0x7340, 0xb101, 0x71c0, 0x7080, 0xb041, 0x5000, 0x90c1, 0x9181, 0x5140, 0x9301, 0x53c0, 0x5280, 0x9241, 0x9601, 0x56c0, 0x5780, 0x9741, 0x5500, 0x95c1, 0x9481, 0x5440, 0x9c01, 0x5cc0, 0x5d80, 0x9d41, 0x5f00, 0x9fc1, 0x9e81, 0x5e40, 0x5a00, 0x9ac1, 0x9b81, 0x5b40, 0x9901, 0x59c0, 0x5880, 0x9841, 0x8801, 0x48c0, 0x4980, 0x8941, 0x4b00, 0x8bc1, 0x8a81, 0x4a40, 0x4e00, 0x8ec1, 0x8f81, 0x4f40, 0x8d01, 0x4dc0, 0x4c80, 0x8c41, 0x4400, 0x84c1, 0x8581, 0x4540, 0x8701, 0x47c0, 0x4680, 0x8641, 0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc16 = (0, _define_crc2.default)('crc-16', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = ~~previous;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = (TABLE[(crc ^ byte) & 0xff] ^ crc >> 8) & 0xffff;
+  }
+
+  return crc;
+});
+
+exports.default = crc16;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],37:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=ccitt --generate=c`
+// prettier-ignore
+var TABLE = [0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef, 0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6, 0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de, 0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485, 0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d, 0x3653, 0x2672, 0x1611, 0x0630, 0x76d7, 0x66f6, 0x5695, 0x46b4, 0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc, 0x48c4, 0x58e5, 0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823, 0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a, 0xb92b, 0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12, 0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e, 0x9b79, 0x8b58, 0xbb3b, 0xab1a, 0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41, 0xedae, 0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49, 0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32, 0x1e51, 0x0e70, 0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78, 0x9188, 0x81a9, 0xb1ca, 0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f, 0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067, 0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e, 0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235, 0x5214, 0x6277, 0x7256, 0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d, 0x34e2, 0x24c3, 0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405, 0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d, 0xd73c, 0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634, 0xd94c, 0xc96d, 0xf90e, 0xe92f, 0x99c8, 0x89e9, 0xb98a, 0xa9ab, 0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3, 0xcb7d, 0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a, 0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0, 0x2ab3, 0x3a92, 0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9, 0x7c26, 0x6c07, 0x5c64, 0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1, 0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8, 0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc16ccitt = (0, _define_crc2.default)('ccitt', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = typeof previous !== 'undefined' ? ~~previous : 0xffff;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = (TABLE[(crc >> 8 ^ byte) & 0xff] ^ crc << 8) & 0xffff;
+  }
+
+  return crc;
+});
+
+exports.default = crc16ccitt;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],38:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=kermit --generate=c`
+// prettier-ignore
+var TABLE = [0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 0x8c48, 0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7, 0x1081, 0x0108, 0x3393, 0x221a, 0x56a5, 0x472c, 0x75b7, 0x643e, 0x9cc9, 0x8d40, 0xbfdb, 0xae52, 0xdaed, 0xcb64, 0xf9ff, 0xe876, 0x2102, 0x308b, 0x0210, 0x1399, 0x6726, 0x76af, 0x4434, 0x55bd, 0xad4a, 0xbcc3, 0x8e58, 0x9fd1, 0xeb6e, 0xfae7, 0xc87c, 0xd9f5, 0x3183, 0x200a, 0x1291, 0x0318, 0x77a7, 0x662e, 0x54b5, 0x453c, 0xbdcb, 0xac42, 0x9ed9, 0x8f50, 0xfbef, 0xea66, 0xd8fd, 0xc974, 0x4204, 0x538d, 0x6116, 0x709f, 0x0420, 0x15a9, 0x2732, 0x36bb, 0xce4c, 0xdfc5, 0xed5e, 0xfcd7, 0x8868, 0x99e1, 0xab7a, 0xbaf3, 0x5285, 0x430c, 0x7197, 0x601e, 0x14a1, 0x0528, 0x37b3, 0x263a, 0xdecd, 0xcf44, 0xfddf, 0xec56, 0x98e9, 0x8960, 0xbbfb, 0xaa72, 0x6306, 0x728f, 0x4014, 0x519d, 0x2522, 0x34ab, 0x0630, 0x17b9, 0xef4e, 0xfec7, 0xcc5c, 0xddd5, 0xa96a, 0xb8e3, 0x8a78, 0x9bf1, 0x7387, 0x620e, 0x5095, 0x411c, 0x35a3, 0x242a, 0x16b1, 0x0738, 0xffcf, 0xee46, 0xdcdd, 0xcd54, 0xb9eb, 0xa862, 0x9af9, 0x8b70, 0x8408, 0x9581, 0xa71a, 0xb693, 0xc22c, 0xd3a5, 0xe13e, 0xf0b7, 0x0840, 0x19c9, 0x2b52, 0x3adb, 0x4e64, 0x5fed, 0x6d76, 0x7cff, 0x9489, 0x8500, 0xb79b, 0xa612, 0xd2ad, 0xc324, 0xf1bf, 0xe036, 0x18c1, 0x0948, 0x3bd3, 0x2a5a, 0x5ee5, 0x4f6c, 0x7df7, 0x6c7e, 0xa50a, 0xb483, 0x8618, 0x9791, 0xe32e, 0xf2a7, 0xc03c, 0xd1b5, 0x2942, 0x38cb, 0x0a50, 0x1bd9, 0x6f66, 0x7eef, 0x4c74, 0x5dfd, 0xb58b, 0xa402, 0x9699, 0x8710, 0xf3af, 0xe226, 0xd0bd, 0xc134, 0x39c3, 0x284a, 0x1ad1, 0x0b58, 0x7fe7, 0x6e6e, 0x5cf5, 0x4d7c, 0xc60c, 0xd785, 0xe51e, 0xf497, 0x8028, 0x91a1, 0xa33a, 0xb2b3, 0x4a44, 0x5bcd, 0x6956, 0x78df, 0x0c60, 0x1de9, 0x2f72, 0x3efb, 0xd68d, 0xc704, 0xf59f, 0xe416, 0x90a9, 0x8120, 0xb3bb, 0xa232, 0x5ac5, 0x4b4c, 0x79d7, 0x685e, 0x1ce1, 0x0d68, 0x3ff3, 0x2e7a, 0xe70e, 0xf687, 0xc41c, 0xd595, 0xa12a, 0xb0a3, 0x8238, 0x93b1, 0x6b46, 0x7acf, 0x4854, 0x59dd, 0x2d62, 0x3ceb, 0x0e70, 0x1ff9, 0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330, 0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc16kermit = (0, _define_crc2.default)('kermit', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = typeof previous !== 'undefined' ? ~~previous : 0x0000;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = (TABLE[(crc ^ byte) & 0xff] ^ crc >> 8) & 0xffff;
+  }
+
+  return crc;
+});
+
+exports.default = crc16kermit;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],39:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=crc-16-modbus --generate=c`
+// prettier-ignore
+var TABLE = [0x0000, 0xc0c1, 0xc181, 0x0140, 0xc301, 0x03c0, 0x0280, 0xc241, 0xc601, 0x06c0, 0x0780, 0xc741, 0x0500, 0xc5c1, 0xc481, 0x0440, 0xcc01, 0x0cc0, 0x0d80, 0xcd41, 0x0f00, 0xcfc1, 0xce81, 0x0e40, 0x0a00, 0xcac1, 0xcb81, 0x0b40, 0xc901, 0x09c0, 0x0880, 0xc841, 0xd801, 0x18c0, 0x1980, 0xd941, 0x1b00, 0xdbc1, 0xda81, 0x1a40, 0x1e00, 0xdec1, 0xdf81, 0x1f40, 0xdd01, 0x1dc0, 0x1c80, 0xdc41, 0x1400, 0xd4c1, 0xd581, 0x1540, 0xd701, 0x17c0, 0x1680, 0xd641, 0xd201, 0x12c0, 0x1380, 0xd341, 0x1100, 0xd1c1, 0xd081, 0x1040, 0xf001, 0x30c0, 0x3180, 0xf141, 0x3300, 0xf3c1, 0xf281, 0x3240, 0x3600, 0xf6c1, 0xf781, 0x3740, 0xf501, 0x35c0, 0x3480, 0xf441, 0x3c00, 0xfcc1, 0xfd81, 0x3d40, 0xff01, 0x3fc0, 0x3e80, 0xfe41, 0xfa01, 0x3ac0, 0x3b80, 0xfb41, 0x3900, 0xf9c1, 0xf881, 0x3840, 0x2800, 0xe8c1, 0xe981, 0x2940, 0xeb01, 0x2bc0, 0x2a80, 0xea41, 0xee01, 0x2ec0, 0x2f80, 0xef41, 0x2d00, 0xedc1, 0xec81, 0x2c40, 0xe401, 0x24c0, 0x2580, 0xe541, 0x2700, 0xe7c1, 0xe681, 0x2640, 0x2200, 0xe2c1, 0xe381, 0x2340, 0xe101, 0x21c0, 0x2080, 0xe041, 0xa001, 0x60c0, 0x6180, 0xa141, 0x6300, 0xa3c1, 0xa281, 0x6240, 0x6600, 0xa6c1, 0xa781, 0x6740, 0xa501, 0x65c0, 0x6480, 0xa441, 0x6c00, 0xacc1, 0xad81, 0x6d40, 0xaf01, 0x6fc0, 0x6e80, 0xae41, 0xaa01, 0x6ac0, 0x6b80, 0xab41, 0x6900, 0xa9c1, 0xa881, 0x6840, 0x7800, 0xb8c1, 0xb981, 0x7940, 0xbb01, 0x7bc0, 0x7a80, 0xba41, 0xbe01, 0x7ec0, 0x7f80, 0xbf41, 0x7d00, 0xbdc1, 0xbc81, 0x7c40, 0xb401, 0x74c0, 0x7580, 0xb541, 0x7700, 0xb7c1, 0xb681, 0x7640, 0x7200, 0xb2c1, 0xb381, 0x7340, 0xb101, 0x71c0, 0x7080, 0xb041, 0x5000, 0x90c1, 0x9181, 0x5140, 0x9301, 0x53c0, 0x5280, 0x9241, 0x9601, 0x56c0, 0x5780, 0x9741, 0x5500, 0x95c1, 0x9481, 0x5440, 0x9c01, 0x5cc0, 0x5d80, 0x9d41, 0x5f00, 0x9fc1, 0x9e81, 0x5e40, 0x5a00, 0x9ac1, 0x9b81, 0x5b40, 0x9901, 0x59c0, 0x5880, 0x9841, 0x8801, 0x48c0, 0x4980, 0x8941, 0x4b00, 0x8bc1, 0x8a81, 0x4a40, 0x4e00, 0x8ec1, 0x8f81, 0x4f40, 0x8d01, 0x4dc0, 0x4c80, 0x8c41, 0x4400, 0x84c1, 0x8581, 0x4540, 0x8701, 0x47c0, 0x4680, 0x8641, 0x8201, 0x42c0, 0x4380, 0x8341, 0x4100, 0x81c1, 0x8081, 0x4040];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc16modbus = (0, _define_crc2.default)('crc-16-modbus', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = typeof previous !== 'undefined' ? ~~previous : 0xffff;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = (TABLE[(crc ^ byte) & 0xff] ^ crc >> 8) & 0xffff;
+  }
+
+  return crc;
+});
+
+exports.default = crc16modbus;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],40:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var crc16xmodem = (0, _define_crc2.default)('xmodem', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = typeof previous !== 'undefined' ? ~~previous : 0x0;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    var code = crc >>> 8 & 0xff;
+
+    code ^= byte & 0xff;
+    code ^= code >>> 4;
+    crc = crc << 8 & 0xffff;
+    crc ^= code;
+    code = code << 5 & 0xffff;
+    crc ^= code;
+    code = code << 7 & 0xffff;
+    crc ^= code;
+  }
+
+  return crc;
+});
+
+exports.default = crc16xmodem;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],41:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-drive --model=crc-24 --generate=c`
+// prettier-ignore
+var TABLE = [0x000000, 0x864cfb, 0x8ad50d, 0x0c99f6, 0x93e6e1, 0x15aa1a, 0x1933ec, 0x9f7f17, 0xa18139, 0x27cdc2, 0x2b5434, 0xad18cf, 0x3267d8, 0xb42b23, 0xb8b2d5, 0x3efe2e, 0xc54e89, 0x430272, 0x4f9b84, 0xc9d77f, 0x56a868, 0xd0e493, 0xdc7d65, 0x5a319e, 0x64cfb0, 0xe2834b, 0xee1abd, 0x685646, 0xf72951, 0x7165aa, 0x7dfc5c, 0xfbb0a7, 0x0cd1e9, 0x8a9d12, 0x8604e4, 0x00481f, 0x9f3708, 0x197bf3, 0x15e205, 0x93aefe, 0xad50d0, 0x2b1c2b, 0x2785dd, 0xa1c926, 0x3eb631, 0xb8faca, 0xb4633c, 0x322fc7, 0xc99f60, 0x4fd39b, 0x434a6d, 0xc50696, 0x5a7981, 0xdc357a, 0xd0ac8c, 0x56e077, 0x681e59, 0xee52a2, 0xe2cb54, 0x6487af, 0xfbf8b8, 0x7db443, 0x712db5, 0xf7614e, 0x19a3d2, 0x9fef29, 0x9376df, 0x153a24, 0x8a4533, 0x0c09c8, 0x00903e, 0x86dcc5, 0xb822eb, 0x3e6e10, 0x32f7e6, 0xb4bb1d, 0x2bc40a, 0xad88f1, 0xa11107, 0x275dfc, 0xdced5b, 0x5aa1a0, 0x563856, 0xd074ad, 0x4f0bba, 0xc94741, 0xc5deb7, 0x43924c, 0x7d6c62, 0xfb2099, 0xf7b96f, 0x71f594, 0xee8a83, 0x68c678, 0x645f8e, 0xe21375, 0x15723b, 0x933ec0, 0x9fa736, 0x19ebcd, 0x8694da, 0x00d821, 0x0c41d7, 0x8a0d2c, 0xb4f302, 0x32bff9, 0x3e260f, 0xb86af4, 0x2715e3, 0xa15918, 0xadc0ee, 0x2b8c15, 0xd03cb2, 0x567049, 0x5ae9bf, 0xdca544, 0x43da53, 0xc596a8, 0xc90f5e, 0x4f43a5, 0x71bd8b, 0xf7f170, 0xfb6886, 0x7d247d, 0xe25b6a, 0x641791, 0x688e67, 0xeec29c, 0x3347a4, 0xb50b5f, 0xb992a9, 0x3fde52, 0xa0a145, 0x26edbe, 0x2a7448, 0xac38b3, 0x92c69d, 0x148a66, 0x181390, 0x9e5f6b, 0x01207c, 0x876c87, 0x8bf571, 0x0db98a, 0xf6092d, 0x7045d6, 0x7cdc20, 0xfa90db, 0x65efcc, 0xe3a337, 0xef3ac1, 0x69763a, 0x578814, 0xd1c4ef, 0xdd5d19, 0x5b11e2, 0xc46ef5, 0x42220e, 0x4ebbf8, 0xc8f703, 0x3f964d, 0xb9dab6, 0xb54340, 0x330fbb, 0xac70ac, 0x2a3c57, 0x26a5a1, 0xa0e95a, 0x9e1774, 0x185b8f, 0x14c279, 0x928e82, 0x0df195, 0x8bbd6e, 0x872498, 0x016863, 0xfad8c4, 0x7c943f, 0x700dc9, 0xf64132, 0x693e25, 0xef72de, 0xe3eb28, 0x65a7d3, 0x5b59fd, 0xdd1506, 0xd18cf0, 0x57c00b, 0xc8bf1c, 0x4ef3e7, 0x426a11, 0xc426ea, 0x2ae476, 0xaca88d, 0xa0317b, 0x267d80, 0xb90297, 0x3f4e6c, 0x33d79a, 0xb59b61, 0x8b654f, 0x0d29b4, 0x01b042, 0x87fcb9, 0x1883ae, 0x9ecf55, 0x9256a3, 0x141a58, 0xefaaff, 0x69e604, 0x657ff2, 0xe33309, 0x7c4c1e, 0xfa00e5, 0xf69913, 0x70d5e8, 0x4e2bc6, 0xc8673d, 0xc4fecb, 0x42b230, 0xddcd27, 0x5b81dc, 0x57182a, 0xd154d1, 0x26359f, 0xa07964, 0xace092, 0x2aac69, 0xb5d37e, 0x339f85, 0x3f0673, 0xb94a88, 0x87b4a6, 0x01f85d, 0x0d61ab, 0x8b2d50, 0x145247, 0x921ebc, 0x9e874a, 0x18cbb1, 0xe37b16, 0x6537ed, 0x69ae1b, 0xefe2e0, 0x709df7, 0xf6d10c, 0xfa48fa, 0x7c0401, 0x42fa2f, 0xc4b6d4, 0xc82f22, 0x4e63d9, 0xd11cce, 0x575035, 0x5bc9c3, 0xdd8538];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc24 = (0, _define_crc2.default)('crc-24', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = typeof previous !== 'undefined' ? ~~previous : 0xb704ce;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = (TABLE[(crc >> 16 ^ byte) & 0xff] ^ crc << 8) & 0xffffff;
+  }
+
+  return crc;
+});
+
+exports.default = crc24;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],42:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=crc-32 --generate=c`
+// prettier-ignore
+var TABLE = [0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91, 0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7, 0x136c9856, 0x646ba8c0, 0xfd62f97a, 0x8a65c9ec, 0x14015c4f, 0x63066cd9, 0xfa0f3d63, 0x8d080df5, 0x3b6e20c8, 0x4c69105e, 0xd56041e4, 0xa2677172, 0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b, 0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940, 0x32d86ce3, 0x45df5c75, 0xdcd60dcf, 0xabd13d59, 0x26d930ac, 0x51de003a, 0xc8d75180, 0xbfd06116, 0x21b4f4b5, 0x56b3c423, 0xcfba9599, 0xb8bda50f, 0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924, 0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d, 0x76dc4190, 0x01db7106, 0x98d220bc, 0xefd5102a, 0x71b18589, 0x06b6b51f, 0x9fbfe4a5, 0xe8b8d433, 0x7807c9a2, 0x0f00f934, 0x9609a88e, 0xe10e9818, 0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01, 0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e, 0x6c0695ed, 0x1b01a57b, 0x8208f4c1, 0xf50fc457, 0x65b0d9c6, 0x12b7e950, 0x8bbeb8ea, 0xfcb9887c, 0x62dd1ddf, 0x15da2d49, 0x8cd37cf3, 0xfbd44c65, 0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2, 0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb, 0x4369e96a, 0x346ed9fc, 0xad678846, 0xda60b8d0, 0x44042d73, 0x33031de5, 0xaa0a4c5f, 0xdd0d7cc9, 0x5005713c, 0x270241aa, 0xbe0b1010, 0xc90c2086, 0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f, 0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4, 0x59b33d17, 0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad, 0xedb88320, 0x9abfb3b6, 0x03b6e20c, 0x74b1d29a, 0xead54739, 0x9dd277af, 0x04db2615, 0x73dc1683, 0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8, 0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1, 0xf00f9344, 0x8708a3d2, 0x1e01f268, 0x6906c2fe, 0xf762575d, 0x806567cb, 0x196c3671, 0x6e6b06e7, 0xfed41b76, 0x89d32be0, 0x10da7a5a, 0x67dd4acc, 0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5, 0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252, 0xd1bb67f1, 0xa6bc5767, 0x3fb506dd, 0x48b2364b, 0xd80d2bda, 0xaf0a1b4c, 0x36034af6, 0x41047a60, 0xdf60efc3, 0xa867df55, 0x316e8eef, 0x4669be79, 0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236, 0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f, 0xc5ba3bbe, 0xb2bd0b28, 0x2bb45a92, 0x5cb36a04, 0xc2d7ffa7, 0xb5d0cf31, 0x2cd99e8b, 0x5bdeae1d, 0x9b64c2b0, 0xec63f226, 0x756aa39c, 0x026d930a, 0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713, 0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38, 0x92d28e9b, 0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21, 0x86d3d2d4, 0xf1d4e242, 0x68ddb3f8, 0x1fda836e, 0x81be16cd, 0xf6b9265b, 0x6fb077e1, 0x18b74777, 0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c, 0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45, 0xa00ae278, 0xd70dd2ee, 0x4e048354, 0x3903b3c2, 0xa7672661, 0xd06016f7, 0x4969474d, 0x3e6e77db, 0xaed16a4a, 0xd9d65adc, 0x40df0b66, 0x37d83bf0, 0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9, 0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc32 = (0, _define_crc2.default)('crc-32', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = previous === 0 ? 0 : ~~previous ^ -1;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = TABLE[(crc ^ byte) & 0xff] ^ crc >>> 8;
+  }
+
+  return crc ^ -1;
+});
+
+exports.default = crc32;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],43:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=crc-8 --generate=c`
+// prettier-ignore
+var TABLE = [0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15, 0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d, 0x70, 0x77, 0x7e, 0x79, 0x6c, 0x6b, 0x62, 0x65, 0x48, 0x4f, 0x46, 0x41, 0x54, 0x53, 0x5a, 0x5d, 0xe0, 0xe7, 0xee, 0xe9, 0xfc, 0xfb, 0xf2, 0xf5, 0xd8, 0xdf, 0xd6, 0xd1, 0xc4, 0xc3, 0xca, 0xcd, 0x90, 0x97, 0x9e, 0x99, 0x8c, 0x8b, 0x82, 0x85, 0xa8, 0xaf, 0xa6, 0xa1, 0xb4, 0xb3, 0xba, 0xbd, 0xc7, 0xc0, 0xc9, 0xce, 0xdb, 0xdc, 0xd5, 0xd2, 0xff, 0xf8, 0xf1, 0xf6, 0xe3, 0xe4, 0xed, 0xea, 0xb7, 0xb0, 0xb9, 0xbe, 0xab, 0xac, 0xa5, 0xa2, 0x8f, 0x88, 0x81, 0x86, 0x93, 0x94, 0x9d, 0x9a, 0x27, 0x20, 0x29, 0x2e, 0x3b, 0x3c, 0x35, 0x32, 0x1f, 0x18, 0x11, 0x16, 0x03, 0x04, 0x0d, 0x0a, 0x57, 0x50, 0x59, 0x5e, 0x4b, 0x4c, 0x45, 0x42, 0x6f, 0x68, 0x61, 0x66, 0x73, 0x74, 0x7d, 0x7a, 0x89, 0x8e, 0x87, 0x80, 0x95, 0x92, 0x9b, 0x9c, 0xb1, 0xb6, 0xbf, 0xb8, 0xad, 0xaa, 0xa3, 0xa4, 0xf9, 0xfe, 0xf7, 0xf0, 0xe5, 0xe2, 0xeb, 0xec, 0xc1, 0xc6, 0xcf, 0xc8, 0xdd, 0xda, 0xd3, 0xd4, 0x69, 0x6e, 0x67, 0x60, 0x75, 0x72, 0x7b, 0x7c, 0x51, 0x56, 0x5f, 0x58, 0x4d, 0x4a, 0x43, 0x44, 0x19, 0x1e, 0x17, 0x10, 0x05, 0x02, 0x0b, 0x0c, 0x21, 0x26, 0x2f, 0x28, 0x3d, 0x3a, 0x33, 0x34, 0x4e, 0x49, 0x40, 0x47, 0x52, 0x55, 0x5c, 0x5b, 0x76, 0x71, 0x78, 0x7f, 0x6a, 0x6d, 0x64, 0x63, 0x3e, 0x39, 0x30, 0x37, 0x22, 0x25, 0x2c, 0x2b, 0x06, 0x01, 0x08, 0x0f, 0x1a, 0x1d, 0x14, 0x13, 0xae, 0xa9, 0xa0, 0xa7, 0xb2, 0xb5, 0xbc, 0xbb, 0x96, 0x91, 0x98, 0x9f, 0x8a, 0x8d, 0x84, 0x83, 0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb, 0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc8 = (0, _define_crc2.default)('crc-8', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = ~~previous;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = TABLE[(crc ^ byte) & 0xff] & 0xff;
+  }
+
+  return crc;
+});
+
+exports.default = crc8;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],44:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=dallas-1-wire --generate=c`
+// prettier-ignore
+var TABLE = [0x00, 0x5e, 0xbc, 0xe2, 0x61, 0x3f, 0xdd, 0x83, 0xc2, 0x9c, 0x7e, 0x20, 0xa3, 0xfd, 0x1f, 0x41, 0x9d, 0xc3, 0x21, 0x7f, 0xfc, 0xa2, 0x40, 0x1e, 0x5f, 0x01, 0xe3, 0xbd, 0x3e, 0x60, 0x82, 0xdc, 0x23, 0x7d, 0x9f, 0xc1, 0x42, 0x1c, 0xfe, 0xa0, 0xe1, 0xbf, 0x5d, 0x03, 0x80, 0xde, 0x3c, 0x62, 0xbe, 0xe0, 0x02, 0x5c, 0xdf, 0x81, 0x63, 0x3d, 0x7c, 0x22, 0xc0, 0x9e, 0x1d, 0x43, 0xa1, 0xff, 0x46, 0x18, 0xfa, 0xa4, 0x27, 0x79, 0x9b, 0xc5, 0x84, 0xda, 0x38, 0x66, 0xe5, 0xbb, 0x59, 0x07, 0xdb, 0x85, 0x67, 0x39, 0xba, 0xe4, 0x06, 0x58, 0x19, 0x47, 0xa5, 0xfb, 0x78, 0x26, 0xc4, 0x9a, 0x65, 0x3b, 0xd9, 0x87, 0x04, 0x5a, 0xb8, 0xe6, 0xa7, 0xf9, 0x1b, 0x45, 0xc6, 0x98, 0x7a, 0x24, 0xf8, 0xa6, 0x44, 0x1a, 0x99, 0xc7, 0x25, 0x7b, 0x3a, 0x64, 0x86, 0xd8, 0x5b, 0x05, 0xe7, 0xb9, 0x8c, 0xd2, 0x30, 0x6e, 0xed, 0xb3, 0x51, 0x0f, 0x4e, 0x10, 0xf2, 0xac, 0x2f, 0x71, 0x93, 0xcd, 0x11, 0x4f, 0xad, 0xf3, 0x70, 0x2e, 0xcc, 0x92, 0xd3, 0x8d, 0x6f, 0x31, 0xb2, 0xec, 0x0e, 0x50, 0xaf, 0xf1, 0x13, 0x4d, 0xce, 0x90, 0x72, 0x2c, 0x6d, 0x33, 0xd1, 0x8f, 0x0c, 0x52, 0xb0, 0xee, 0x32, 0x6c, 0x8e, 0xd0, 0x53, 0x0d, 0xef, 0xb1, 0xf0, 0xae, 0x4c, 0x12, 0x91, 0xcf, 0x2d, 0x73, 0xca, 0x94, 0x76, 0x28, 0xab, 0xf5, 0x17, 0x49, 0x08, 0x56, 0xb4, 0xea, 0x69, 0x37, 0xd5, 0x8b, 0x57, 0x09, 0xeb, 0xb5, 0x36, 0x68, 0x8a, 0xd4, 0x95, 0xcb, 0x29, 0x77, 0xf4, 0xaa, 0x48, 0x16, 0xe9, 0xb7, 0x55, 0x0b, 0x88, 0xd6, 0x34, 0x6a, 0x2b, 0x75, 0x97, 0xc9, 0x4a, 0x14, 0xf6, 0xa8, 0x74, 0x2a, 0xc8, 0x96, 0x15, 0x4b, 0xa9, 0xf7, 0xb6, 0xe8, 0x0a, 0x54, 0xd7, 0x89, 0x6b, 0x35];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crc81wire = (0, _define_crc2.default)('dallas-1-wire', function (buf, previous) {
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = ~~previous;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = TABLE[(crc ^ byte) & 0xff] & 0xff;
+  }
+
+  return crc;
+});
+
+exports.default = crc81wire;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],45:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var _create_buffer = require('./create_buffer');
+
+var _create_buffer2 = _interopRequireDefault(_create_buffer);
+
+var _define_crc = require('./define_crc');
+
+var _define_crc2 = _interopRequireDefault(_define_crc);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// Generated by `./pycrc.py --algorithm=table-driven --model=jam --generate=c`
+// prettier-ignore
+var TABLE = [0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3, 0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91, 0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7, 0x136c9856, 0x646ba8c0, 0xfd62f97a, 0x8a65c9ec, 0x14015c4f, 0x63066cd9, 0xfa0f3d63, 0x8d080df5, 0x3b6e20c8, 0x4c69105e, 0xd56041e4, 0xa2677172, 0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b, 0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940, 0x32d86ce3, 0x45df5c75, 0xdcd60dcf, 0xabd13d59, 0x26d930ac, 0x51de003a, 0xc8d75180, 0xbfd06116, 0x21b4f4b5, 0x56b3c423, 0xcfba9599, 0xb8bda50f, 0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924, 0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d, 0x76dc4190, 0x01db7106, 0x98d220bc, 0xefd5102a, 0x71b18589, 0x06b6b51f, 0x9fbfe4a5, 0xe8b8d433, 0x7807c9a2, 0x0f00f934, 0x9609a88e, 0xe10e9818, 0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01, 0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e, 0x6c0695ed, 0x1b01a57b, 0x8208f4c1, 0xf50fc457, 0x65b0d9c6, 0x12b7e950, 0x8bbeb8ea, 0xfcb9887c, 0x62dd1ddf, 0x15da2d49, 0x8cd37cf3, 0xfbd44c65, 0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2, 0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb, 0x4369e96a, 0x346ed9fc, 0xad678846, 0xda60b8d0, 0x44042d73, 0x33031de5, 0xaa0a4c5f, 0xdd0d7cc9, 0x5005713c, 0x270241aa, 0xbe0b1010, 0xc90c2086, 0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f, 0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4, 0x59b33d17, 0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad, 0xedb88320, 0x9abfb3b6, 0x03b6e20c, 0x74b1d29a, 0xead54739, 0x9dd277af, 0x04db2615, 0x73dc1683, 0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8, 0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1, 0xf00f9344, 0x8708a3d2, 0x1e01f268, 0x6906c2fe, 0xf762575d, 0x806567cb, 0x196c3671, 0x6e6b06e7, 0xfed41b76, 0x89d32be0, 0x10da7a5a, 0x67dd4acc, 0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5, 0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252, 0xd1bb67f1, 0xa6bc5767, 0x3fb506dd, 0x48b2364b, 0xd80d2bda, 0xaf0a1b4c, 0x36034af6, 0x41047a60, 0xdf60efc3, 0xa867df55, 0x316e8eef, 0x4669be79, 0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236, 0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f, 0xc5ba3bbe, 0xb2bd0b28, 0x2bb45a92, 0x5cb36a04, 0xc2d7ffa7, 0xb5d0cf31, 0x2cd99e8b, 0x5bdeae1d, 0x9b64c2b0, 0xec63f226, 0x756aa39c, 0x026d930a, 0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713, 0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38, 0x92d28e9b, 0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21, 0x86d3d2d4, 0xf1d4e242, 0x68ddb3f8, 0x1fda836e, 0x81be16cd, 0xf6b9265b, 0x6fb077e1, 0x18b74777, 0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c, 0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45, 0xa00ae278, 0xd70dd2ee, 0x4e048354, 0x3903b3c2, 0xa7672661, 0xd06016f7, 0x4969474d, 0x3e6e77db, 0xaed16a4a, 0xd9d65adc, 0x40df0b66, 0x37d83bf0, 0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9, 0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf, 0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d];
+
+if (typeof Int32Array !== 'undefined') TABLE = new Int32Array(TABLE);
+
+var crcjam = (0, _define_crc2.default)('jam', function (buf) {
+  var previous = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : -1;
+
+  if (!_buffer.Buffer.isBuffer(buf)) buf = (0, _create_buffer2.default)(buf);
+
+  var crc = previous === 0 ? 0 : ~~previous;
+
+  for (var index = 0; index < buf.length; index++) {
+    var byte = buf[index];
+    crc = TABLE[(crc ^ byte) & 0xff] ^ crc >>> 8;
+  }
+
+  return crc;
+});
+
+exports.default = crcjam;
+
+},{"./create_buffer":46,"./define_crc":47,"buffer":17}],46:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _buffer = require('buffer');
+
+var createBuffer = _buffer.Buffer.from && _buffer.Buffer.alloc && _buffer.Buffer.allocUnsafe && _buffer.Buffer.allocUnsafeSlow ? _buffer.Buffer.from : // support for Node < 5.10
+function (val) {
+  return new _buffer.Buffer(val);
+};
+
+exports.default = createBuffer;
+
+},{"buffer":17}],47:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+exports.default = function (model, calc) {
+  var fn = function fn(buf, previous) {
+    return calc(buf, previous) >>> 0;
+  };
+  fn.signed = calc;
+  fn.unsigned = fn;
+  fn.model = model;
+
+  return fn;
+};
+
+},{}],48:[function(require,module,exports){
+'use strict';
+
+module.exports = {
+  crc1: require('./crc1'),
+  crc8: require('./crc8'),
+  crc81wire: require('./crc8_1wire'),
+  crc16: require('./crc16'),
+  crc16ccitt: require('./crc16_ccitt'),
+  crc16modbus: require('./crc16_modbus'),
+  crc16xmodem: require('./crc16_xmodem'),
+  crc16kermit: require('./crc16_kermit'),
+  crc24: require('./crc24'),
+  crc32: require('./crc32'),
+  crcjam: require('./crcjam')
+};
+
+},{"./crc1":24,"./crc16":25,"./crc16_ccitt":26,"./crc16_kermit":27,"./crc16_modbus":28,"./crc16_xmodem":29,"./crc24":30,"./crc32":31,"./crc8":32,"./crc8_1wire":33,"./crcjam":34}],49:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = (nBytes * 8) - mLen - 1
@@ -5852,81 +12644,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],38:[function(_dereq_,module,exports){
-(function (global){
-'use strict';
-var Mutation = global.MutationObserver || global.WebKitMutationObserver;
-
-var scheduleDrain;
-
-{
-  if (Mutation) {
-    var called = 0;
-    var observer = new Mutation(nextTick);
-    var element = global.document.createTextNode('');
-    observer.observe(element, {
-      characterData: true
-    });
-    scheduleDrain = function () {
-      element.data = (called = ++called % 2);
-    };
-  } else if (!global.setImmediate && typeof global.MessageChannel !== 'undefined') {
-    var channel = new global.MessageChannel();
-    channel.port1.onmessage = nextTick;
-    scheduleDrain = function () {
-      channel.port2.postMessage(0);
-    };
-  } else if ('document' in global && 'onreadystatechange' in global.document.createElement('script')) {
-    scheduleDrain = function () {
-
-      // Create a <script> element; its readystatechange event will be fired asynchronously once it is inserted
-      // into the document. Do so, thus queuing up the task. Remember to clean up once it's been called.
-      var scriptEl = global.document.createElement('script');
-      scriptEl.onreadystatechange = function () {
-        nextTick();
-
-        scriptEl.onreadystatechange = null;
-        scriptEl.parentNode.removeChild(scriptEl);
-        scriptEl = null;
-      };
-      global.document.documentElement.appendChild(scriptEl);
-    };
-  } else {
-    scheduleDrain = function () {
-      setTimeout(nextTick, 0);
-    };
-  }
-}
-
-var draining;
-var queue = [];
-//named nextTick for less confusing stack traces
-function nextTick() {
-  draining = true;
-  var i, oldQueue;
-  var len = queue.length;
-  while (len) {
-    oldQueue = queue;
-    queue = [];
-    i = -1;
-    while (++i < len) {
-      oldQueue[i]();
-    }
-    len = queue.length;
-  }
-  draining = false;
-}
-
-module.exports = immediate;
-function immediate(task) {
-  if (queue.push(task) === 1 && !draining) {
-    scheduleDrain();
-  }
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-
-},{}],39:[function(_dereq_,module,exports){
+},{}],50:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -5951,7 +12669,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],40:[function(_dereq_,module,exports){
+},{}],51:[function(require,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -5974,5346 +12692,2503 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],41:[function(_dereq_,module,exports){
-module.exports      = isTypedArray
-isTypedArray.strict = isStrictTypedArray
-isTypedArray.loose  = isLooseTypedArray
-
-var toString = Object.prototype.toString
-var names = {
-    '[object Int8Array]': true
-  , '[object Int16Array]': true
-  , '[object Int32Array]': true
-  , '[object Uint8Array]': true
-  , '[object Uint8ClampedArray]': true
-  , '[object Uint16Array]': true
-  , '[object Uint32Array]': true
-  , '[object Float32Array]': true
-  , '[object Float64Array]': true
-}
-
-function isTypedArray(arr) {
-  return (
-       isStrictTypedArray(arr)
-    || isLooseTypedArray(arr)
-  )
-}
-
-function isStrictTypedArray(arr) {
-  return (
-       arr instanceof Int8Array
-    || arr instanceof Int16Array
-    || arr instanceof Int32Array
-    || arr instanceof Uint8Array
-    || arr instanceof Uint8ClampedArray
-    || arr instanceof Uint16Array
-    || arr instanceof Uint32Array
-    || arr instanceof Float32Array
-    || arr instanceof Float64Array
-  )
-}
-
-function isLooseTypedArray(arr) {
-  return names[toString.call(arr)]
-}
-
-},{}],42:[function(_dereq_,module,exports){
+},{}],52:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],43:[function(_dereq_,module,exports){
-'use strict';
-var utils = _dereq_('./utils');
-var support = _dereq_('./support');
-// private property
-var _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+},{}],53:[function(require,module,exports){
+/* global Blob, FileReader */
+// Code exacted from https://github.com/feross/blob-to-buffer.
+// Because it have not import Buffer module for browser usage.
 
+var Buffer = require('buffer').Buffer;
 
-// public method for encoding
-exports.encode = function(input) {
-    var output = [];
-    var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
-    var i = 0, len = input.length, remainingBytes = len;
+module.exports = function blobToBuffer(blob, cb) {
+  if (typeof Blob === 'undefined' || !(blob instanceof Blob)) {
+    throw new Error('first argument must be a Blob')
+  }
+  if (typeof cb !== 'function') {
+    throw new Error('second argument must be a function')
+  }
 
-    var isArray = utils.getTypeOf(input) !== "string";
-    while (i < input.length) {
-        remainingBytes = len - i;
+  var reader = new FileReader()
 
-        if (!isArray) {
-            chr1 = input.charCodeAt(i++);
-            chr2 = i < len ? input.charCodeAt(i++) : 0;
-            chr3 = i < len ? input.charCodeAt(i++) : 0;
-        } else {
-            chr1 = input[i++];
-            chr2 = i < len ? input[i++] : 0;
-            chr3 = i < len ? input[i++] : 0;
-        }
+  function onLoadEnd(e) {
+    reader.removeEventListener('loadend', onLoadEnd, false);
+    if (e.error) cb(e.error);
+    else cb(null, new Buffer(reader.result));
+  }
 
-        enc1 = chr1 >> 2;
-        enc2 = ((chr1 & 3) << 4) | (chr2 >> 4);
-        enc3 = remainingBytes > 1 ? (((chr2 & 15) << 2) | (chr3 >> 6)) : 64;
-        enc4 = remainingBytes > 2 ? (chr3 & 63) : 64;
-
-        output.push(_keyStr.charAt(enc1) + _keyStr.charAt(enc2) + _keyStr.charAt(enc3) + _keyStr.charAt(enc4));
-
-    }
-
-    return output.join("");
+  reader.addEventListener('loadend', onLoadEnd, false);
+  reader.readAsArrayBuffer(blob);
 };
 
-// public method for decoding
-exports.decode = function(input) {
-    var chr1, chr2, chr3;
-    var enc1, enc2, enc3, enc4;
-    var i = 0, resultIndex = 0;
-
-    var dataUrlPrefix = "data:";
-
-    if (input.substr(0, dataUrlPrefix.length) === dataUrlPrefix) {
-        // This is a common error: people give a data url
-        // (data:image/png;base64,iVBOR...) with a {base64: true} and
-        // wonders why things don't work.
-        // We can detect that the string input looks like a data url but we
-        // *can't* be sure it is one: removing everything up to the comma would
-        // be too dangerous.
-        throw new Error("Invalid base64 input, it looks like a data url.");
-    }
-
-    input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
-
-    var totalLength = input.length * 3 / 4;
-    if(input.charAt(input.length - 1) === _keyStr.charAt(64)) {
-        totalLength--;
-    }
-    if(input.charAt(input.length - 2) === _keyStr.charAt(64)) {
-        totalLength--;
-    }
-    if (totalLength % 1 !== 0) {
-        // totalLength is not an integer, the length does not match a valid
-        // base64 content. That can happen if:
-        // - the input is not a base64 content
-        // - the input is *almost* a base64 content, with a extra chars at the
-        //   beginning or at the end
-        // - the input uses a base64 variant (base64url for example)
-        throw new Error("Invalid base64 input, bad content length.");
-    }
-    var output;
-    if (support.uint8array) {
-        output = new Uint8Array(totalLength|0);
-    } else {
-        output = new Array(totalLength|0);
-    }
-
-    while (i < input.length) {
-
-        enc1 = _keyStr.indexOf(input.charAt(i++));
-        enc2 = _keyStr.indexOf(input.charAt(i++));
-        enc3 = _keyStr.indexOf(input.charAt(i++));
-        enc4 = _keyStr.indexOf(input.charAt(i++));
-
-        chr1 = (enc1 << 2) | (enc2 >> 4);
-        chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
-        chr3 = ((enc3 & 3) << 6) | enc4;
-
-        output[resultIndex++] = chr1;
-
-        if (enc3 !== 64) {
-            output[resultIndex++] = chr2;
-        }
-        if (enc4 !== 64) {
-            output[resultIndex++] = chr3;
-        }
-
-    }
-
-    return output;
-};
-
-},{"./support":72,"./utils":74}],44:[function(_dereq_,module,exports){
-'use strict';
-
-var external = _dereq_("./external");
-var DataWorker = _dereq_('./stream/DataWorker');
-var DataLengthProbe = _dereq_('./stream/DataLengthProbe');
-var Crc32Probe = _dereq_('./stream/Crc32Probe');
-var DataLengthProbe = _dereq_('./stream/DataLengthProbe');
-
+},{"buffer":17}],54:[function(require,module,exports){
 /**
- * Represent a compressed object, with everything needed to decompress it.
- * @constructor
- * @param {number} compressedSize the size of the data compressed.
- * @param {number} uncompressedSize the size of the data after decompression.
- * @param {number} crc32 the crc32 of the decompressed file.
- * @param {object} compression the type of compression, see lib/compressions.js.
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the compressed data.
+ *  From zip.js/z-worker.js, combined with inflate.js, exports as raw string so it can be requied and to use as a blob.
  */
-function CompressedObject(compressedSize, uncompressedSize, crc32, compression, data) {
-    this.compressedSize = compressedSize;
-    this.uncompressedSize = uncompressedSize;
-    this.crc32 = crc32;
-    this.compression = compression;
-    this.compressedContent = data;
-}
-
-CompressedObject.prototype = {
-    /**
-     * Create a worker to get the uncompressed content.
-     * @return {GenericWorker} the worker.
-     */
-    getContentWorker : function () {
-        var worker = new DataWorker(external.Promise.resolve(this.compressedContent))
-        .pipe(this.compression.uncompressWorker())
-        .pipe(new DataLengthProbe("data_length"));
-
-        var that = this;
-        worker.on("end", function () {
-            if(this.streamInfo['data_length'] !== that.uncompressedSize) {
-                throw new Error("Bug : uncompressed data size mismatch");
-            }
-        });
-        return worker;
-    },
-    /**
-     * Create a worker to get the compressed content.
-     * @return {GenericWorker} the worker.
-     */
-    getCompressedWorker : function () {
-        return new DataWorker(external.Promise.resolve(this.compressedContent))
-        .withStreamInfo("compressedSize", this.compressedSize)
-        .withStreamInfo("uncompressedSize", this.uncompressedSize)
-        .withStreamInfo("crc32", this.crc32)
-        .withStreamInfo("compression", this.compression)
-        ;
-    }
-};
-
-/**
- * Chain the given worker with other workers to compress the content with the
- * given compresion.
- * @param {GenericWorker} uncompressedWorker the worker to pipe.
- * @param {Object} compression the compression object.
- * @param {Object} compressionOptions the options to use when compressing.
- * @return {GenericWorker} the new worker compressing the content.
- */
-CompressedObject.createWorkerFrom = function (uncompressedWorker, compression, compressionOptions) {
-    return uncompressedWorker
-    .pipe(new Crc32Probe())
-    .pipe(new DataLengthProbe("uncompressedSize"))
-    .pipe(compression.compressWorker(compressionOptions))
-    .pipe(new DataLengthProbe("compressedSize"))
-    .withStreamInfo("compression", compression);
-};
-
-module.exports = CompressedObject;
-
-},{"./external":48,"./stream/Crc32Probe":67,"./stream/DataLengthProbe":68,"./stream/DataWorker":69}],45:[function(_dereq_,module,exports){
-'use strict';
-
-var GenericWorker = _dereq_("./stream/GenericWorker");
-
-exports.STORE = {
-    magic: "\x00\x00",
-    compressWorker : function (compressionOptions) {
-        return new GenericWorker("STORE compression");
-    },
-    uncompressWorker : function () {
-        return new GenericWorker("STORE decompression");
-    }
-};
-exports.DEFLATE = _dereq_('./flate');
-
-},{"./flate":49,"./stream/GenericWorker":70}],46:[function(_dereq_,module,exports){
-'use strict';
-
-var utils = _dereq_('./utils');
-
-/**
- * The following functions come from pako, from pako/lib/zlib/crc32.js
- * released under the MIT license, see pako https://github.com/nodeca/pako/
- */
-
-// Use ordinary array, since untyped makes no boost here
-function makeTable() {
-    var c, table = [];
-
-    for(var n =0; n < 256; n++){
-        c = n;
-        for(var k =0; k < 8; k++){
-            c = ((c&1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
-        }
-        table[n] = c;
-    }
-
-    return table;
-}
-
-// Create table on load. Just 255 signed longs. Not a problem.
-var crcTable = makeTable();
-
-
-function crc32(crc, buf, len, pos) {
-    var t = crcTable, end = pos + len;
-
-    crc = crc ^ (-1);
-
-    for (var i = pos; i < end; i++ ) {
-        crc = (crc >>> 8) ^ t[(crc ^ buf[i]) & 0xFF];
-    }
-
-    return (crc ^ (-1)); // >>> 0;
-}
-
-// That's all for the pako functions.
-
-/**
- * Compute the crc32 of a string.
- * This is almost the same as the function crc32, but for strings. Using the
- * same function for the two use cases leads to horrible performances.
- * @param {Number} crc the starting value of the crc.
- * @param {String} str the string to use.
- * @param {Number} len the length of the string.
- * @param {Number} pos the starting position for the crc32 computation.
- * @return {Number} the computed crc32.
- */
-function crc32str(crc, str, len, pos) {
-    var t = crcTable, end = pos + len;
-
-    crc = crc ^ (-1);
-
-    for (var i = pos; i < end; i++ ) {
-        crc = (crc >>> 8) ^ t[(crc ^ str.charCodeAt(i)) & 0xFF];
-    }
-
-    return (crc ^ (-1)); // >>> 0;
-}
-
-module.exports = function crc32wrapper(input, crc) {
-    if (typeof input === "undefined" || !input.length) {
-        return 0;
-    }
-
-    var isArray = utils.getTypeOf(input) !== "string";
-
-    if(isArray) {
-        return crc32(crc|0, input, input.length, 0);
-    } else {
-        return crc32str(crc|0, input, input.length, 0);
-    }
-};
-
-},{"./utils":74}],47:[function(_dereq_,module,exports){
-'use strict';
-exports.base64 = false;
-exports.binary = false;
-exports.dir = false;
-exports.createFolders = true;
-exports.date = null;
-exports.compression = null;
-exports.compressionOptions = null;
-exports.comment = null;
-exports.unixPermissions = null;
-exports.dosPermissions = null;
-
-},{}],48:[function(_dereq_,module,exports){
-/* global Promise */
-'use strict';
-
-// load the global object first:
-// - it should be better integrated in the system (unhandledRejection in node)
-// - the environment may have a custom Promise implementation (see zone.js)
-var ES6Promise = null;
-if (typeof Promise !== "undefined") {
-    ES6Promise = Promise;
-} else {
-    ES6Promise = _dereq_("lie");
-}
-
-/**
- * Let the user use/change some implementations.
- */
-module.exports = {
-    Promise: ES6Promise
-};
-
-},{"lie":78}],49:[function(_dereq_,module,exports){
-'use strict';
-var USE_TYPEDARRAY = (typeof Uint8Array !== 'undefined') && (typeof Uint16Array !== 'undefined') && (typeof Uint32Array !== 'undefined');
-
-var pako = _dereq_("pako");
-var utils = _dereq_("./utils");
-var GenericWorker = _dereq_("./stream/GenericWorker");
-
-var ARRAY_TYPE = USE_TYPEDARRAY ? "uint8array" : "array";
-
-exports.magic = "\x08\x00";
-
-/**
- * Create a worker that uses pako to inflate/deflate.
- * @constructor
- * @param {String} action the name of the pako function to call : either "Deflate" or "Inflate".
- * @param {Object} options the options to use when (de)compressing.
- */
-function FlateWorker(action, options) {
-    GenericWorker.call(this, "FlateWorker/" + action);
-
-    this._pako = null;
-    this._pakoAction = action;
-    this._pakoOptions = options;
-    // the `meta` object from the last chunk received
-    // this allow this worker to pass around metadata
-    this.meta = {};
-}
-
-utils.inherits(FlateWorker, GenericWorker);
-
-/**
- * @see GenericWorker.processChunk
- */
-FlateWorker.prototype.processChunk = function (chunk) {
-    this.meta = chunk.meta;
-    if (this._pako === null) {
-        this._createPako();
-    }
-    this._pako.push(utils.transformTo(ARRAY_TYPE, chunk.data), false);
-};
-
-/**
- * @see GenericWorker.flush
- */
-FlateWorker.prototype.flush = function () {
-    GenericWorker.prototype.flush.call(this);
-    if (this._pako === null) {
-        this._createPako();
-    }
-    this._pako.push([], true);
-};
-/**
- * @see GenericWorker.cleanUp
- */
-FlateWorker.prototype.cleanUp = function () {
-    GenericWorker.prototype.cleanUp.call(this);
-    this._pako = null;
-};
-
-/**
- * Create the _pako object.
- * TODO: lazy-loading this object isn't the best solution but it's the
- * quickest. The best solution is to lazy-load the worker list. See also the
- * issue #446.
- */
-FlateWorker.prototype._createPako = function () {
-    this._pako = new pako[this._pakoAction]({
-        raw: true,
-        level: this._pakoOptions.level || -1 // default compression
-    });
-    var self = this;
-    this._pako.onData = function(data) {
-        self.push({
-            data : data,
-            meta : self.meta
-        });
-    };
-};
-
-exports.compressWorker = function (compressionOptions) {
-    return new FlateWorker("Deflate", compressionOptions);
-};
-exports.uncompressWorker = function () {
-    return new FlateWorker("Inflate", {});
-};
-
-},{"./stream/GenericWorker":70,"./utils":74,"pako":79}],50:[function(_dereq_,module,exports){
-'use strict';
-
-var utils = _dereq_('../utils');
-var GenericWorker = _dereq_('../stream/GenericWorker');
-var utf8 = _dereq_('../utf8');
-var crc32 = _dereq_('../crc32');
-var signature = _dereq_('../signature');
-
-/**
- * Transform an integer into a string in hexadecimal.
- * @private
- * @param {number} dec the number to convert.
- * @param {number} bytes the number of bytes to generate.
- * @returns {string} the result.
- */
-var decToHex = function(dec, bytes) {
-    var hex = "", i;
-    for (i = 0; i < bytes; i++) {
-        hex += String.fromCharCode(dec & 0xff);
-        dec = dec >>> 8;
-    }
-    return hex;
-};
-
-/**
- * Generate the UNIX part of the external file attributes.
- * @param {Object} unixPermissions the unix permissions or null.
- * @param {Boolean} isDir true if the entry is a directory, false otherwise.
- * @return {Number} a 32 bit integer.
- *
- * adapted from http://unix.stackexchange.com/questions/14705/the-zip-formats-external-file-attribute :
- *
- * TTTTsstrwxrwxrwx0000000000ADVSHR
- * ^^^^____________________________ file type, see zipinfo.c (UNX_*)
- *     ^^^_________________________ setuid, setgid, sticky
- *        ^^^^^^^^^________________ permissions
- *                 ^^^^^^^^^^______ not used ?
- *                           ^^^^^^ DOS attribute bits : Archive, Directory, Volume label, System file, Hidden, Read only
- */
-var generateUnixExternalFileAttr = function (unixPermissions, isDir) {
-
-    var result = unixPermissions;
-    if (!unixPermissions) {
-        // I can't use octal values in strict mode, hence the hexa.
-        //  040775 => 0x41fd
-        // 0100664 => 0x81b4
-        result = isDir ? 0x41fd : 0x81b4;
-    }
-    return (result & 0xFFFF) << 16;
-};
-
-/**
- * Generate the DOS part of the external file attributes.
- * @param {Object} dosPermissions the dos permissions or null.
- * @param {Boolean} isDir true if the entry is a directory, false otherwise.
- * @return {Number} a 32 bit integer.
- *
- * Bit 0     Read-Only
- * Bit 1     Hidden
- * Bit 2     System
- * Bit 3     Volume Label
- * Bit 4     Directory
- * Bit 5     Archive
- */
-var generateDosExternalFileAttr = function (dosPermissions, isDir) {
-
-    // the dir flag is already set for compatibility
-    return (dosPermissions || 0)  & 0x3F;
-};
-
-/**
- * Generate the various parts used in the construction of the final zip file.
- * @param {Object} streamInfo the hash with informations about the compressed file.
- * @param {Boolean} streamedContent is the content streamed ?
- * @param {Boolean} streamingEnded is the stream finished ?
- * @param {number} offset the current offset from the start of the zip file.
- * @param {String} platform let's pretend we are this platform (change platform dependents fields)
- * @param {Function} encodeFileName the function to encode the file name / comment.
- * @return {Object} the zip parts.
- */
-var generateZipParts = function(streamInfo, streamedContent, streamingEnded, offset, platform, encodeFileName) {
-    var file = streamInfo['file'],
-    compression = streamInfo['compression'],
-    useCustomEncoding = encodeFileName !== utf8.utf8encode,
-    encodedFileName = utils.transformTo("string", encodeFileName(file.name)),
-    utfEncodedFileName = utils.transformTo("string", utf8.utf8encode(file.name)),
-    comment = file.comment,
-    encodedComment = utils.transformTo("string", encodeFileName(comment)),
-    utfEncodedComment = utils.transformTo("string", utf8.utf8encode(comment)),
-    useUTF8ForFileName = utfEncodedFileName.length !== file.name.length,
-    useUTF8ForComment = utfEncodedComment.length !== comment.length,
-    dosTime,
-    dosDate,
-    extraFields = "",
-    unicodePathExtraField = "",
-    unicodeCommentExtraField = "",
-    dir = file.dir,
-    date = file.date;
-
-
-    var dataInfo = {
-        crc32 : 0,
-        compressedSize : 0,
-        uncompressedSize : 0
-    };
-
-    // if the content is streamed, the sizes/crc32 are only available AFTER
-    // the end of the stream.
-    if (!streamedContent || streamingEnded) {
-        dataInfo.crc32 = streamInfo['crc32'];
-        dataInfo.compressedSize = streamInfo['compressedSize'];
-        dataInfo.uncompressedSize = streamInfo['uncompressedSize'];
-    }
-
-    var bitflag = 0;
-    if (streamedContent) {
-        // Bit 3: the sizes/crc32 are set to zero in the local header.
-        // The correct values are put in the data descriptor immediately
-        // following the compressed data.
-        bitflag |= 0x0008;
-    }
-    if (!useCustomEncoding && (useUTF8ForFileName || useUTF8ForComment)) {
-        // Bit 11: Language encoding flag (EFS).
-        bitflag |= 0x0800;
-    }
-
-
-    var extFileAttr = 0;
-    var versionMadeBy = 0;
-    if (dir) {
-        // dos or unix, we set the dos dir flag
-        extFileAttr |= 0x00010;
-    }
-    if(platform === "UNIX") {
-        versionMadeBy = 0x031E; // UNIX, version 3.0
-        extFileAttr |= generateUnixExternalFileAttr(file.unixPermissions, dir);
-    } else { // DOS or other, fallback to DOS
-        versionMadeBy = 0x0014; // DOS, version 2.0
-        extFileAttr |= generateDosExternalFileAttr(file.dosPermissions, dir);
-    }
-
-    // date
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/52/13.html
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/65/16.html
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/66/16.html
-
-    dosTime = date.getUTCHours();
-    dosTime = dosTime << 6;
-    dosTime = dosTime | date.getUTCMinutes();
-    dosTime = dosTime << 5;
-    dosTime = dosTime | date.getUTCSeconds() / 2;
-
-    dosDate = date.getUTCFullYear() - 1980;
-    dosDate = dosDate << 4;
-    dosDate = dosDate | (date.getUTCMonth() + 1);
-    dosDate = dosDate << 5;
-    dosDate = dosDate | date.getUTCDate();
-
-    if (useUTF8ForFileName) {
-        // set the unicode path extra field. unzip needs at least one extra
-        // field to correctly handle unicode path, so using the path is as good
-        // as any other information. This could improve the situation with
-        // other archive managers too.
-        // This field is usually used without the utf8 flag, with a non
-        // unicode path in the header (winrar, winzip). This helps (a bit)
-        // with the messy Windows' default compressed folders feature but
-        // breaks on p7zip which doesn't seek the unicode path extra field.
-        // So for now, UTF-8 everywhere !
-        unicodePathExtraField =
-            // Version
-            decToHex(1, 1) +
-            // NameCRC32
-            decToHex(crc32(encodedFileName), 4) +
-            // UnicodeName
-            utfEncodedFileName;
-
-        extraFields +=
-            // Info-ZIP Unicode Path Extra Field
-            "\x75\x70" +
-            // size
-            decToHex(unicodePathExtraField.length, 2) +
-            // content
-            unicodePathExtraField;
-    }
-
-    if(useUTF8ForComment) {
-
-        unicodeCommentExtraField =
-            // Version
-            decToHex(1, 1) +
-            // CommentCRC32
-            decToHex(crc32(encodedComment), 4) +
-            // UnicodeName
-            utfEncodedComment;
-
-        extraFields +=
-            // Info-ZIP Unicode Path Extra Field
-            "\x75\x63" +
-            // size
-            decToHex(unicodeCommentExtraField.length, 2) +
-            // content
-            unicodeCommentExtraField;
-    }
-
-    var header = "";
-
-    // version needed to extract
-    header += "\x0A\x00";
-    // general purpose bit flag
-    header += decToHex(bitflag, 2);
-    // compression method
-    header += compression.magic;
-    // last mod file time
-    header += decToHex(dosTime, 2);
-    // last mod file date
-    header += decToHex(dosDate, 2);
-    // crc-32
-    header += decToHex(dataInfo.crc32, 4);
-    // compressed size
-    header += decToHex(dataInfo.compressedSize, 4);
-    // uncompressed size
-    header += decToHex(dataInfo.uncompressedSize, 4);
-    // file name length
-    header += decToHex(encodedFileName.length, 2);
-    // extra field length
-    header += decToHex(extraFields.length, 2);
-
-
-    var fileRecord = signature.LOCAL_FILE_HEADER + header + encodedFileName + extraFields;
-
-    var dirRecord = signature.CENTRAL_FILE_HEADER +
-        // version made by (00: DOS)
-        decToHex(versionMadeBy, 2) +
-        // file header (common to file and central directory)
-        header +
-        // file comment length
-        decToHex(encodedComment.length, 2) +
-        // disk number start
-        "\x00\x00" +
-        // internal file attributes TODO
-        "\x00\x00" +
-        // external file attributes
-        decToHex(extFileAttr, 4) +
-        // relative offset of local header
-        decToHex(offset, 4) +
-        // file name
-        encodedFileName +
-        // extra field
-        extraFields +
-        // file comment
-        encodedComment;
-
-    return {
-        fileRecord: fileRecord,
-        dirRecord: dirRecord
-    };
-};
-
-/**
- * Generate the EOCD record.
- * @param {Number} entriesCount the number of entries in the zip file.
- * @param {Number} centralDirLength the length (in bytes) of the central dir.
- * @param {Number} localDirLength the length (in bytes) of the local dir.
- * @param {String} comment the zip file comment as a binary string.
- * @param {Function} encodeFileName the function to encode the comment.
- * @return {String} the EOCD record.
- */
-var generateCentralDirectoryEnd = function (entriesCount, centralDirLength, localDirLength, comment, encodeFileName) {
-    var dirEnd = "";
-    var encodedComment = utils.transformTo("string", encodeFileName(comment));
-
-    // end of central dir signature
-    dirEnd = signature.CENTRAL_DIRECTORY_END +
-        // number of this disk
-        "\x00\x00" +
-        // number of the disk with the start of the central directory
-        "\x00\x00" +
-        // total number of entries in the central directory on this disk
-        decToHex(entriesCount, 2) +
-        // total number of entries in the central directory
-        decToHex(entriesCount, 2) +
-        // size of the central directory   4 bytes
-        decToHex(centralDirLength, 4) +
-        // offset of start of central directory with respect to the starting disk number
-        decToHex(localDirLength, 4) +
-        // .ZIP file comment length
-        decToHex(encodedComment.length, 2) +
-        // .ZIP file comment
-        encodedComment;
-
-    return dirEnd;
-};
-
-/**
- * Generate data descriptors for a file entry.
- * @param {Object} streamInfo the hash generated by a worker, containing informations
- * on the file entry.
- * @return {String} the data descriptors.
- */
-var generateDataDescriptors = function (streamInfo) {
-    var descriptor = "";
-    descriptor = signature.DATA_DESCRIPTOR +
-        // crc-32                          4 bytes
-        decToHex(streamInfo['crc32'], 4) +
-        // compressed size                 4 bytes
-        decToHex(streamInfo['compressedSize'], 4) +
-        // uncompressed size               4 bytes
-        decToHex(streamInfo['uncompressedSize'], 4);
-
-    return descriptor;
-};
-
-
-/**
- * A worker to concatenate other workers to create a zip file.
- * @param {Boolean} streamFiles `true` to stream the content of the files,
- * `false` to accumulate it.
- * @param {String} comment the comment to use.
- * @param {String} platform the platform to use, "UNIX" or "DOS".
- * @param {Function} encodeFileName the function to encode file names and comments.
- */
-function ZipFileWorker(streamFiles, comment, platform, encodeFileName) {
-    GenericWorker.call(this, "ZipFileWorker");
-    // The number of bytes written so far. This doesn't count accumulated chunks.
-    this.bytesWritten = 0;
-    // The comment of the zip file
-    this.zipComment = comment;
-    // The platform "generating" the zip file.
-    this.zipPlatform = platform;
-    // the function to encode file names and comments.
-    this.encodeFileName = encodeFileName;
-    // Should we stream the content of the files ?
-    this.streamFiles = streamFiles;
-    // If `streamFiles` is false, we will need to accumulate the content of the
-    // files to calculate sizes / crc32 (and write them *before* the content).
-    // This boolean indicates if we are accumulating chunks (it will change a lot
-    // during the lifetime of this worker).
-    this.accumulate = false;
-    // The buffer receiving chunks when accumulating content.
-    this.contentBuffer = [];
-    // The list of generated directory records.
-    this.dirRecords = [];
-    // The offset (in bytes) from the beginning of the zip file for the current source.
-    this.currentSourceOffset = 0;
-    // The total number of entries in this zip file.
-    this.entriesCount = 0;
-    // the name of the file currently being added, null when handling the end of the zip file.
-    // Used for the emited metadata.
-    this.currentFile = null;
-
-
-
-    this._sources = [];
-}
-utils.inherits(ZipFileWorker, GenericWorker);
-
-/**
- * @see GenericWorker.push
- */
-ZipFileWorker.prototype.push = function (chunk) {
-
-    var currentFilePercent = chunk.meta.percent || 0;
-    var entriesCount = this.entriesCount;
-    var remainingFiles = this._sources.length;
-
-    if(this.accumulate) {
-        this.contentBuffer.push(chunk);
-    } else {
-        this.bytesWritten += chunk.data.length;
-
-        GenericWorker.prototype.push.call(this, {
-            data : chunk.data,
-            meta : {
-                currentFile : this.currentFile,
-                percent : entriesCount ? (currentFilePercent + 100 * (entriesCount - remainingFiles - 1)) / entriesCount : 100
-            }
-        });
-    }
-};
-
-/**
- * The worker started a new source (an other worker).
- * @param {Object} streamInfo the streamInfo object from the new source.
- */
-ZipFileWorker.prototype.openedSource = function (streamInfo) {
-    this.currentSourceOffset = this.bytesWritten;
-    this.currentFile = streamInfo['file'].name;
-
-    var streamedContent = this.streamFiles && !streamInfo['file'].dir;
-
-    // don't stream folders (because they don't have any content)
-    if(streamedContent) {
-        var record = generateZipParts(streamInfo, streamedContent, false, this.currentSourceOffset, this.zipPlatform, this.encodeFileName);
-        this.push({
-            data : record.fileRecord,
-            meta : {percent:0}
-        });
-    } else {
-        // we need to wait for the whole file before pushing anything
-        this.accumulate = true;
-    }
-};
-
-/**
- * The worker finished a source (an other worker).
- * @param {Object} streamInfo the streamInfo object from the finished source.
- */
-ZipFileWorker.prototype.closedSource = function (streamInfo) {
-    this.accumulate = false;
-    var streamedContent = this.streamFiles && !streamInfo['file'].dir;
-    var record = generateZipParts(streamInfo, streamedContent, true, this.currentSourceOffset, this.zipPlatform, this.encodeFileName);
-
-    this.dirRecords.push(record.dirRecord);
-    if(streamedContent) {
-        // after the streamed file, we put data descriptors
-        this.push({
-            data : generateDataDescriptors(streamInfo),
-            meta : {percent:100}
-        });
-    } else {
-        // the content wasn't streamed, we need to push everything now
-        // first the file record, then the content
-        this.push({
-            data : record.fileRecord,
-            meta : {percent:0}
-        });
-        while(this.contentBuffer.length) {
-            this.push(this.contentBuffer.shift());
-        }
-    }
-    this.currentFile = null;
-};
-
-/**
- * @see GenericWorker.flush
- */
-ZipFileWorker.prototype.flush = function () {
-
-    var localDirLength = this.bytesWritten;
-    for(var i = 0; i < this.dirRecords.length; i++) {
-        this.push({
-            data : this.dirRecords[i],
-            meta : {percent:100}
-        });
-    }
-    var centralDirLength = this.bytesWritten - localDirLength;
-
-    var dirEnd = generateCentralDirectoryEnd(this.dirRecords.length, centralDirLength, localDirLength, this.zipComment, this.encodeFileName);
-
-    this.push({
-        data : dirEnd,
-        meta : {percent:100}
-    });
-};
-
-/**
- * Prepare the next source to be read.
- */
-ZipFileWorker.prototype.prepareNextSource = function () {
-    this.previous = this._sources.shift();
-    this.openedSource(this.previous.streamInfo);
-    if (this.isPaused) {
-        this.previous.pause();
-    } else {
-        this.previous.resume();
-    }
-};
-
-/**
- * @see GenericWorker.registerPrevious
- */
-ZipFileWorker.prototype.registerPrevious = function (previous) {
-    this._sources.push(previous);
-    var self = this;
-
-    previous.on('data', function (chunk) {
-        self.processChunk(chunk);
-    });
-    previous.on('end', function () {
-        self.closedSource(self.previous.streamInfo);
-        if(self._sources.length) {
-            self.prepareNextSource();
-        } else {
-            self.end();
-        }
-    });
-    previous.on('error', function (e) {
-        self.error(e);
-    });
-    return this;
-};
-
-/**
- * @see GenericWorker.resume
- */
-ZipFileWorker.prototype.resume = function () {
-    if(!GenericWorker.prototype.resume.call(this)) {
-        return false;
-    }
-
-    if (!this.previous && this._sources.length) {
-        this.prepareNextSource();
-        return true;
-    }
-    if (!this.previous && !this._sources.length && !this.generatedError) {
-        this.end();
-        return true;
-    }
-};
-
-/**
- * @see GenericWorker.error
- */
-ZipFileWorker.prototype.error = function (e) {
-    var sources = this._sources;
-    if(!GenericWorker.prototype.error.call(this, e)) {
-        return false;
-    }
-    for(var i = 0; i < sources.length; i++) {
-        try {
-            sources[i].error(e);
-        } catch(e) {
-            // the `error` exploded, nothing to do
-        }
-    }
-    return true;
-};
-
-/**
- * @see GenericWorker.lock
- */
-ZipFileWorker.prototype.lock = function () {
-    GenericWorker.prototype.lock.call(this);
-    var sources = this._sources;
-    for(var i = 0; i < sources.length; i++) {
-        sources[i].lock();
-    }
-};
-
-module.exports = ZipFileWorker;
-
-},{"../crc32":46,"../signature":65,"../stream/GenericWorker":70,"../utf8":73,"../utils":74}],51:[function(_dereq_,module,exports){
-'use strict';
-
-var compressions = _dereq_('../compressions');
-var ZipFileWorker = _dereq_('./ZipFileWorker');
-
-/**
- * Find the compression to use.
- * @param {String} fileCompression the compression defined at the file level, if any.
- * @param {String} zipCompression the compression defined at the load() level.
- * @return {Object} the compression object to use.
- */
-var getCompression = function (fileCompression, zipCompression) {
-
-    var compressionName = fileCompression || zipCompression;
-    var compression = compressions[compressionName];
-    if (!compression) {
-        throw new Error(compressionName + " is not a valid compression method !");
-    }
-    return compression;
-};
-
-/**
- * Create a worker to generate a zip file.
- * @param {JSZip} zip the JSZip instance at the right root level.
- * @param {Object} options to generate the zip file.
- * @param {String} comment the comment to use.
- */
-exports.generateWorker = function (zip, options, comment) {
-
-    var zipFileWorker = new ZipFileWorker(options.streamFiles, comment, options.platform, options.encodeFileName);
-    var entriesCount = 0;
-    try {
-
-        zip.forEach(function (relativePath, file) {
-            entriesCount++;
-            var compression = getCompression(file.options.compression, options.compression);
-            var compressionOptions = file.options.compressionOptions || options.compressionOptions || {};
-            var dir = file.dir, date = file.date;
-
-            file._compressWorker(compression, compressionOptions)
-            .withStreamInfo("file", {
-                name : relativePath,
-                dir : dir,
-                date : date,
-                comment : file.comment || "",
-                unixPermissions : file.unixPermissions,
-                dosPermissions : file.dosPermissions
-            })
-            .pipe(zipFileWorker);
-        });
-        zipFileWorker.entriesCount = entriesCount;
-    } catch (e) {
-        zipFileWorker.error(e);
-    }
-
-    return zipFileWorker;
-};
-
-},{"../compressions":45,"./ZipFileWorker":50}],52:[function(_dereq_,module,exports){
-'use strict';
-
-/**
- * Representation a of zip file in js
- * @constructor
- */
-function JSZip() {
-    // if this constructor is used without `new`, it adds `new` before itself:
-    if(!(this instanceof JSZip)) {
-        return new JSZip();
-    }
-
-    if(arguments.length) {
-        throw new Error("The constructor with parameters has been removed in JSZip 3.0, please check the upgrade guide.");
-    }
-
-    // object containing the files :
-    // {
-    //   "folder/" : {...},
-    //   "folder/data.txt" : {...}
-    // }
-    this.files = {};
-
-    this.comment = null;
-
-    // Where we are in the hierarchy
-    this.root = "";
-    this.clone = function() {
-        var newObj = new JSZip();
-        for (var i in this) {
-            if (typeof this[i] !== "function") {
-                newObj[i] = this[i];
-            }
-        }
-        return newObj;
-    };
-}
-JSZip.prototype = _dereq_('./object');
-JSZip.prototype.loadAsync = _dereq_('./load');
-JSZip.support = _dereq_('./support');
-JSZip.defaults = _dereq_('./defaults');
-
-// TODO find a better way to handle this version,
-// a require('package.json').version doesn't work with webpack, see #327
-JSZip.version = "3.1.5";
-
-JSZip.loadAsync = function (content, options) {
-    return new JSZip().loadAsync(content, options);
-};
-
-JSZip.external = _dereq_("./external");
-module.exports = JSZip;
-
-},{"./defaults":47,"./external":48,"./load":53,"./object":57,"./support":72}],53:[function(_dereq_,module,exports){
-'use strict';
-var utils = _dereq_('./utils');
-var external = _dereq_("./external");
-var utf8 = _dereq_('./utf8');
-var utils = _dereq_('./utils');
-var ZipEntries = _dereq_('./zipEntries');
-var Crc32Probe = _dereq_('./stream/Crc32Probe');
-var nodejsUtils = _dereq_("./nodejsUtils");
-
-/**
- * Check the CRC32 of an entry.
- * @param {ZipEntry} zipEntry the zip entry to check.
- * @return {Promise} the result.
- */
-function checkEntryCRC32(zipEntry) {
-    return new external.Promise(function (resolve, reject) {
-        var worker = zipEntry.decompressed.getContentWorker().pipe(new Crc32Probe());
-        worker.on("error", function (e) {
-            reject(e);
-        })
-        .on("end", function () {
-            if (worker.streamInfo.crc32 !== zipEntry.decompressed.crc32) {
-                reject(new Error("Corrupted zip : CRC32 mismatch"));
-            } else {
-                resolve();
-            }
-        })
-        .resume();
-    });
-}
-
-module.exports = function(data, options) {
-    var zip = this;
-    options = utils.extend(options || {}, {
-        base64: false,
-        checkCRC32: false,
-        optimizedBinaryString: false,
-        createFolders: false,
-        decodeFileName: utf8.utf8decode
-    });
-
-    if (nodejsUtils.isNode && nodejsUtils.isStream(data)) {
-        return external.Promise.reject(new Error("JSZip can't accept a stream when loading a zip file."));
-    }
-
-    return utils.prepareContent("the loaded zip file", data, true, options.optimizedBinaryString, options.base64)
-    .then(function(data) {
-        var zipEntries = new ZipEntries(options);
-        zipEntries.load(data);
-        return zipEntries;
-    }).then(function checkCRC32(zipEntries) {
-        var promises = [external.Promise.resolve(zipEntries)];
-        var files = zipEntries.files;
-        if (options.checkCRC32) {
-            for (var i = 0; i < files.length; i++) {
-                promises.push(checkEntryCRC32(files[i]));
-            }
-        }
-        return external.Promise.all(promises);
-    }).then(function addFiles(results) {
-        var zipEntries = results.shift();
-        var files = zipEntries.files;
-        for (var i = 0; i < files.length; i++) {
-            var input = files[i];
-            zip.file(input.fileNameStr, input.decompressed, {
-                binary: true,
-                optimizedBinaryString: true,
-                date: input.date,
-                dir: input.dir,
-                comment : input.fileCommentStr.length ? input.fileCommentStr : null,
-                unixPermissions : input.unixPermissions,
-                dosPermissions : input.dosPermissions,
-                createFolders: options.createFolders
-            });
-        }
-        if (zipEntries.zipComment.length) {
-            zip.comment = zipEntries.zipComment;
-        }
-
-        return zip;
-    });
-};
-
-},{"./external":48,"./nodejsUtils":56,"./stream/Crc32Probe":67,"./utf8":73,"./utils":74,"./zipEntries":75}],54:[function(_dereq_,module,exports){
-"use strict";
-
-var utils = _dereq_('../utils');
-var GenericWorker = _dereq_('../stream/GenericWorker');
-
-/**
- * A worker that use a nodejs stream as source.
- * @constructor
- * @param {String} filename the name of the file entry for this stream.
- * @param {Readable} stream the nodejs stream.
- */
-function NodejsStreamInputAdapter(filename, stream) {
-    GenericWorker.call(this, "Nodejs stream input adapter for " + filename);
-    this._upstreamEnded = false;
-    this._bindStream(stream);
-}
-
-utils.inherits(NodejsStreamInputAdapter, GenericWorker);
-
-/**
- * Prepare the stream and bind the callbacks on it.
- * Do this ASAP on node 0.10 ! A lazy binding doesn't always work.
- * @param {Stream} stream the nodejs stream to use.
- */
-NodejsStreamInputAdapter.prototype._bindStream = function (stream) {
-    var self = this;
-    this._stream = stream;
-    stream.pause();
-    stream
-    .on("data", function (chunk) {
-        self.push({
-            data: chunk,
-            meta : {
-                percent : 0
-            }
-        });
-    })
-    .on("error", function (e) {
-        if(self.isPaused) {
-            this.generatedError = e;
-        } else {
-            self.error(e);
-        }
-    })
-    .on("end", function () {
-        if(self.isPaused) {
-            self._upstreamEnded = true;
-        } else {
-            self.end();
-        }
-    });
-};
-NodejsStreamInputAdapter.prototype.pause = function () {
-    if(!GenericWorker.prototype.pause.call(this)) {
-        return false;
-    }
-    this._stream.pause();
-    return true;
-};
-NodejsStreamInputAdapter.prototype.resume = function () {
-    if(!GenericWorker.prototype.resume.call(this)) {
-        return false;
-    }
-
-    if(this._upstreamEnded) {
-        this.end();
-    } else {
-        this._stream.resume();
-    }
-
-    return true;
-};
-
-module.exports = NodejsStreamInputAdapter;
-
-},{"../stream/GenericWorker":70,"../utils":74}],55:[function(_dereq_,module,exports){
-'use strict';
-
-var Readable = _dereq_('readable-stream').Readable;
-
-var utils = _dereq_('../utils');
-utils.inherits(NodejsStreamOutputAdapter, Readable);
-
-/**
-* A nodejs stream using a worker as source.
-* @see the SourceWrapper in http://nodejs.org/api/stream.html
-* @constructor
-* @param {StreamHelper} helper the helper wrapping the worker
-* @param {Object} options the nodejs stream options
-* @param {Function} updateCb the update callback.
-*/
-function NodejsStreamOutputAdapter(helper, options, updateCb) {
-    Readable.call(this, options);
-    this._helper = helper;
-
-    var self = this;
-    helper.on("data", function (data, meta) {
-        if (!self.push(data)) {
-            self._helper.pause();
-        }
-        if(updateCb) {
-            updateCb(meta);
-        }
-    })
-    .on("error", function(e) {
-        self.emit('error', e);
-    })
-    .on("end", function () {
-        self.push(null);
-    });
-}
-
-
-NodejsStreamOutputAdapter.prototype._read = function() {
-    this._helper.resume();
-};
-
-module.exports = NodejsStreamOutputAdapter;
-
-},{"../utils":74,"readable-stream":58}],56:[function(_dereq_,module,exports){
-(function (Buffer){
-'use strict';
-
-module.exports = {
-    /**
-     * True if this is running in Nodejs, will be undefined in a browser.
-     * In a browser, browserify won't include this file and the whole module
-     * will be resolved an empty object.
-     */
-    isNode : typeof Buffer !== "undefined",
-    /**
-     * Create a new nodejs Buffer from an existing content.
-     * @param {Object} data the data to pass to the constructor.
-     * @param {String} encoding the encoding to use.
-     * @return {Buffer} a new Buffer.
-     */
-    newBufferFrom: function(data, encoding) {
-        // XXX We can't use `Buffer.from` which comes from `Uint8Array.from`
-        // in nodejs v4 (< v.4.5). It's not the expected implementation (and
-        // has a different signature).
-        // see https://github.com/nodejs/node/issues/8053
-        // A condition on nodejs' version won't solve the issue as we don't
-        // control the Buffer polyfills that may or may not be used.
-        return new Buffer(data, encoding);
-    },
-    /**
-     * Create a new nodejs Buffer with the specified size.
-     * @param {Integer} size the size of the buffer.
-     * @return {Buffer} a new Buffer.
-     */
-    allocBuffer: function (size) {
-        if (Buffer.alloc) {
-            return Buffer.alloc(size);
-        } else {
-            return new Buffer(size);
-        }
-    },
-    /**
-     * Find out if an object is a Buffer.
-     * @param {Object} b the object to test.
-     * @return {Boolean} true if the object is a Buffer, false otherwise.
-     */
-    isBuffer : function(b){
-        return Buffer.isBuffer(b);
-    },
-
-    isStream : function (obj) {
-        return obj &&
-            typeof obj.on === "function" &&
-            typeof obj.pause === "function" &&
-            typeof obj.resume === "function";
-    }
-};
-
-}).call(this,_dereq_("buffer").Buffer)
-
-},{"buffer":12}],57:[function(_dereq_,module,exports){
-'use strict';
-var utf8 = _dereq_('./utf8');
-var utils = _dereq_('./utils');
-var GenericWorker = _dereq_('./stream/GenericWorker');
-var StreamHelper = _dereq_('./stream/StreamHelper');
-var defaults = _dereq_('./defaults');
-var CompressedObject = _dereq_('./compressedObject');
-var ZipObject = _dereq_('./zipObject');
-var generate = _dereq_("./generate");
-var nodejsUtils = _dereq_("./nodejsUtils");
-var NodejsStreamInputAdapter = _dereq_("./nodejs/NodejsStreamInputAdapter");
-
-
-/**
- * Add a file in the current folder.
- * @private
- * @param {string} name the name of the file
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data of the file
- * @param {Object} originalOptions the options of the file
- * @return {Object} the new file.
- */
-var fileAdd = function(name, data, originalOptions) {
-    // be sure sub folders exist
-    var dataType = utils.getTypeOf(data),
-        parent;
-
-
-    /*
-     * Correct options.
-     */
-
-    var o = utils.extend(originalOptions || {}, defaults);
-    o.date = o.date || new Date();
-    if (o.compression !== null) {
-        o.compression = o.compression.toUpperCase();
-    }
-
-    if (typeof o.unixPermissions === "string") {
-        o.unixPermissions = parseInt(o.unixPermissions, 8);
-    }
-
-    // UNX_IFDIR  0040000 see zipinfo.c
-    if (o.unixPermissions && (o.unixPermissions & 0x4000)) {
-        o.dir = true;
-    }
-    // Bit 4    Directory
-    if (o.dosPermissions && (o.dosPermissions & 0x0010)) {
-        o.dir = true;
-    }
-
-    if (o.dir) {
-        name = forceTrailingSlash(name);
-    }
-    if (o.createFolders && (parent = parentFolder(name))) {
-        folderAdd.call(this, parent, true);
-    }
-
-    var isUnicodeString = dataType === "string" && o.binary === false && o.base64 === false;
-    if (!originalOptions || typeof originalOptions.binary === "undefined") {
-        o.binary = !isUnicodeString;
-    }
-
-
-    var isCompressedEmpty = (data instanceof CompressedObject) && data.uncompressedSize === 0;
-
-    if (isCompressedEmpty || o.dir || !data || data.length === 0) {
-        o.base64 = false;
-        o.binary = true;
-        data = "";
-        o.compression = "STORE";
-        dataType = "string";
-    }
-
-    /*
-     * Convert content to fit.
-     */
-
-    var zipObjectContent = null;
-    if (data instanceof CompressedObject || data instanceof GenericWorker) {
-        zipObjectContent = data;
-    } else if (nodejsUtils.isNode && nodejsUtils.isStream(data)) {
-        zipObjectContent = new NodejsStreamInputAdapter(name, data);
-    } else {
-        zipObjectContent = utils.prepareContent(name, data, o.binary, o.optimizedBinaryString, o.base64);
-    }
-
-    var object = new ZipObject(name, zipObjectContent, o);
-    this.files[name] = object;
-    /*
-    TODO: we can't throw an exception because we have async promises
-    (we can have a promise of a Date() for example) but returning a
-    promise is useless because file(name, data) returns the JSZip
-    object for chaining. Should we break that to allow the user
-    to catch the error ?
-
-    return external.Promise.resolve(zipObjectContent)
-    .then(function () {
-        return object;
-    });
-    */
-};
-
-/**
- * Find the parent folder of the path.
- * @private
- * @param {string} path the path to use
- * @return {string} the parent folder, or ""
- */
-var parentFolder = function (path) {
-    if (path.slice(-1) === '/') {
-        path = path.substring(0, path.length - 1);
-    }
-    var lastSlash = path.lastIndexOf('/');
-    return (lastSlash > 0) ? path.substring(0, lastSlash) : "";
-};
-
-/**
- * Returns the path with a slash at the end.
- * @private
- * @param {String} path the path to check.
- * @return {String} the path with a trailing slash.
- */
-var forceTrailingSlash = function(path) {
-    // Check the name ends with a /
-    if (path.slice(-1) !== "/") {
-        path += "/"; // IE doesn't like substr(-1)
-    }
-    return path;
-};
-
-/**
- * Add a (sub) folder in the current folder.
- * @private
- * @param {string} name the folder's name
- * @param {boolean=} [createFolders] If true, automatically create sub
- *  folders. Defaults to false.
- * @return {Object} the new folder.
- */
-var folderAdd = function(name, createFolders) {
-    createFolders = (typeof createFolders !== 'undefined') ? createFolders : defaults.createFolders;
-
-    name = forceTrailingSlash(name);
-
-    // Does this folder already exist?
-    if (!this.files[name]) {
-        fileAdd.call(this, name, null, {
-            dir: true,
-            createFolders: createFolders
-        });
-    }
-    return this.files[name];
-};
-
-/**
-* Cross-window, cross-Node-context regular expression detection
-* @param  {Object}  object Anything
-* @return {Boolean}        true if the object is a regular expression,
-* false otherwise
-*/
-function isRegExp(object) {
-    return Object.prototype.toString.call(object) === "[object RegExp]";
-}
-
-// return the actual prototype of JSZip
-var out = {
-    /**
-     * @see loadAsync
-     */
-    load: function() {
-        throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
-    },
-
-
-    /**
-     * Call a callback function for each entry at this folder level.
-     * @param {Function} cb the callback function:
-     * function (relativePath, file) {...}
-     * It takes 2 arguments : the relative path and the file.
-     */
-    forEach: function(cb) {
-        var filename, relativePath, file;
-        for (filename in this.files) {
-            if (!this.files.hasOwnProperty(filename)) {
-                continue;
-            }
-            file = this.files[filename];
-            relativePath = filename.slice(this.root.length, filename.length);
-            if (relativePath && filename.slice(0, this.root.length) === this.root) { // the file is in the current root
-                cb(relativePath, file); // TODO reverse the parameters ? need to be clean AND consistent with the filter search fn...
-            }
-        }
-    },
-
-    /**
-     * Filter nested files/folders with the specified function.
-     * @param {Function} search the predicate to use :
-     * function (relativePath, file) {...}
-     * It takes 2 arguments : the relative path and the file.
-     * @return {Array} An array of matching elements.
-     */
-    filter: function(search) {
-        var result = [];
-        this.forEach(function (relativePath, entry) {
-            if (search(relativePath, entry)) { // the file matches the function
-                result.push(entry);
-            }
-
-        });
-        return result;
-    },
-
-    /**
-     * Add a file to the zip file, or search a file.
-     * @param   {string|RegExp} name The name of the file to add (if data is defined),
-     * the name of the file to find (if no data) or a regex to match files.
-     * @param   {String|ArrayBuffer|Uint8Array|Buffer} data  The file data, either raw or base64 encoded
-     * @param   {Object} o     File options
-     * @return  {JSZip|Object|Array} this JSZip object (when adding a file),
-     * a file (when searching by string) or an array of files (when searching by regex).
-     */
-    file: function(name, data, o) {
-        if (arguments.length === 1) {
-            if (isRegExp(name)) {
-                var regexp = name;
-                return this.filter(function(relativePath, file) {
-                    return !file.dir && regexp.test(relativePath);
-                });
-            }
-            else { // text
-                var obj = this.files[this.root + name];
-                if (obj && !obj.dir) {
-                    return obj;
-                } else {
-                    return null;
-                }
-            }
-        }
-        else { // more than one argument : we have data !
-            name = this.root + name;
-            fileAdd.call(this, name, data, o);
-        }
-        return this;
-    },
-
-    /**
-     * Add a directory to the zip file, or search.
-     * @param   {String|RegExp} arg The name of the directory to add, or a regex to search folders.
-     * @return  {JSZip} an object with the new directory as the root, or an array containing matching folders.
-     */
-    folder: function(arg) {
-        if (!arg) {
-            return this;
-        }
-
-        if (isRegExp(arg)) {
-            return this.filter(function(relativePath, file) {
-                return file.dir && arg.test(relativePath);
-            });
-        }
-
-        // else, name is a new folder
-        var name = this.root + arg;
-        var newFolder = folderAdd.call(this, name);
-
-        // Allow chaining by returning a new object with this folder as the root
-        var ret = this.clone();
-        ret.root = newFolder.name;
-        return ret;
-    },
-
-    /**
-     * Delete a file, or a directory and all sub-files, from the zip
-     * @param {string} name the name of the file to delete
-     * @return {JSZip} this JSZip object
-     */
-    remove: function(name) {
-        name = this.root + name;
-        var file = this.files[name];
-        if (!file) {
-            // Look for any folders
-            if (name.slice(-1) !== "/") {
-                name += "/";
-            }
-            file = this.files[name];
-        }
-
-        if (file && !file.dir) {
-            // file
-            delete this.files[name];
-        } else {
-            // maybe a folder, delete recursively
-            var kids = this.filter(function(relativePath, file) {
-                return file.name.slice(0, name.length) === name;
-            });
-            for (var i = 0; i < kids.length; i++) {
-                delete this.files[kids[i].name];
-            }
-        }
-
-        return this;
-    },
-
-    /**
-     * Generate the complete zip file
-     * @param {Object} options the options to generate the zip file :
-     * - compression, "STORE" by default.
-     * - type, "base64" by default. Values are : string, base64, uint8array, arraybuffer, blob.
-     * @return {String|Uint8Array|ArrayBuffer|Buffer|Blob} the zip file
-     */
-    generate: function(options) {
-        throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
-    },
-
-    /**
-     * Generate the complete zip file as an internal stream.
-     * @param {Object} options the options to generate the zip file :
-     * - compression, "STORE" by default.
-     * - type, "base64" by default. Values are : string, base64, uint8array, arraybuffer, blob.
-     * @return {StreamHelper} the streamed zip file.
-     */
-    generateInternalStream: function(options) {
-      var worker, opts = {};
-      try {
-          opts = utils.extend(options || {}, {
-              streamFiles: false,
-              compression: "STORE",
-              compressionOptions : null,
-              type: "",
-              platform: "DOS",
-              comment: null,
-              mimeType: 'application/zip',
-              encodeFileName: utf8.utf8encode
-          });
-
-          opts.type = opts.type.toLowerCase();
-          opts.compression = opts.compression.toUpperCase();
-
-          // "binarystring" is prefered but the internals use "string".
-          if(opts.type === "binarystring") {
-            opts.type = "string";
-          }
-
-          if (!opts.type) {
-            throw new Error("No output type specified.");
-          }
-
-          utils.checkSupport(opts.type);
-
-          // accept nodejs `process.platform`
-          if(
-              opts.platform === 'darwin' ||
-              opts.platform === 'freebsd' ||
-              opts.platform === 'linux' ||
-              opts.platform === 'sunos'
-          ) {
-              opts.platform = "UNIX";
-          }
-          if (opts.platform === 'win32') {
-              opts.platform = "DOS";
-          }
-
-          var comment = opts.comment || this.comment || "";
-          worker = generate.generateWorker(this, opts, comment);
-      } catch (e) {
-        worker = new GenericWorker("error");
-        worker.error(e);
-      }
-      return new StreamHelper(worker, opts.type || "string", opts.mimeType);
-    },
-    /**
-     * Generate the complete zip file asynchronously.
-     * @see generateInternalStream
-     */
-    generateAsync: function(options, onUpdate) {
-        return this.generateInternalStream(options).accumulate(onUpdate);
-    },
-    /**
-     * Generate the complete zip file asynchronously.
-     * @see generateInternalStream
-     */
-    generateNodeStream: function(options, onUpdate) {
-        options = options || {};
-        if (!options.type) {
-            options.type = "nodebuffer";
-        }
-        return this.generateInternalStream(options).toNodejsStream(onUpdate);
-    }
-};
-module.exports = out;
-
-},{"./compressedObject":44,"./defaults":47,"./generate":51,"./nodejs/NodejsStreamInputAdapter":54,"./nodejsUtils":56,"./stream/GenericWorker":70,"./stream/StreamHelper":71,"./utf8":73,"./utils":74,"./zipObject":77}],58:[function(_dereq_,module,exports){
+module.exports = 'function inflate(a){"use strict";function w(){function m(a,b,d,h,m,n,o,p,q,r,s){var t,u,w,x,z,A,B,C,E,F,G,H,I,D=0,y=d;do e[a[b+D]]++,D++,y--;while(0!==y);if(e[0]==d)return o[0]=-1,p[0]=0,c;for(B=p[0],z=1;v>=z&&0===e[z];z++);for(A=z,z>B&&(B=z),y=v;0!==y&&0===e[y];y--);for(w=y,B>y&&(B=y),p[0]=B,H=1<<z;y>z;z++,H<<=1)if((H-=e[z])<0)return g;if((H-=e[y])<0)return g;for(e[y]+=H,l[1]=z=0,D=1,G=2;0!==--y;)l[G]=z+=e[D],G++,D++;y=0,D=0;do 0!==(z=a[b+D])&&(s[l[z]++]=y),D++;while(++y<d);for(d=l[w],l[0]=y=0,D=0,x=-1,F=-B,j[0]=0,E=0,I=0;w>=A;A++)for(t=e[A];0!==t--;){for(;A>F+B;){if(x++,F+=B,I=w-F,I=I>B?B:I,(u=1<<(z=A-F))>t+1&&(u-=t+1,G=A,I>z))for(;++z<I&&!((u<<=1)<=e[++G]);)u-=e[G];if(I=1<<z,r[0]+I>k)return g;j[x]=E=r[0],r[0]+=I,0!==x?(l[x]=y,f[0]=z,f[1]=B,z=y>>>F-B,f[2]=E-j[x-1]-z,q.set(f,3*(j[x-1]+z))):o[0]=E}for(f[1]=A-F,D>=d?f[0]=192:s[D]<h?(f[0]=s[D]<256?0:96,f[2]=s[D++]):(f[0]=n[s[D]-h]+16+64,f[2]=m[s[D++]-h]),u=1<<A-F,z=y>>>F;I>z;z+=u)q.set(f,3*(E+z));for(z=1<<A-1;0!==(y&z);z>>>=1)y^=z;for(y^=z,C=(1<<F)-1;(y&C)!=l[x];)x--,F-=B,C=(1<<F)-1}return 0!==H&&1!=w?i:c}function n(a){var c;for(b||(b=[],d=[],e=new Int32Array(v+1),f=[],j=new Int32Array(v),l=new Int32Array(v+1)),d.length<a&&(d=[]),c=0;a>c;c++)d[c]=0;for(c=0;v+1>c;c++)e[c]=0;for(c=0;3>c;c++)f[c]=0;j.set(e.subarray(0,v),0),l.set(e.subarray(0,v+1),0)}var b,d,e,f,j,l,a=this;a.inflate_trees_bits=function(a,c,e,f,h){var j;return n(19),b[0]=0,j=m(a,0,19,19,null,null,e,c,f,b,d),j==g?h.msg="oversubscribed dynamic bit lengths tree":(j==i||0===c[0])&&(h.msg="incomplete dynamic bit lengths tree",j=g),j},a.inflate_trees_dynamic=function(a,e,f,j,k,l,o,p,q){var v;return n(288),b[0]=0,v=m(f,0,a,257,r,s,l,j,p,b,d),v!=c||0===j[0]?(v==g?q.msg="oversubscribed literal/length tree":v!=h&&(q.msg="incomplete literal/length tree",v=g),v):(n(288),v=m(f,a,e,0,t,u,o,k,p,b,d),v!=c||0===k[0]&&a>257?(v==g?q.msg="oversubscribed distance tree":v==i?(q.msg="incomplete distance tree",v=g):v!=h&&(q.msg="empty distance tree with lengths",v=g),v):c)}}function H(){function u(a,b,e,f,h,i,k,l){var m,n,o,p,y,z,A,B,s=l.next_in_index,t=l.avail_in,q=k.bitb,r=k.bitk,u=k.write,v=u<k.read?k.read-u-1:k.end-u,w=j[a],x=j[b];do{for(;20>r;)t--,q|=(255&l.read_byte(s++))<<r,r+=8;if(m=q&w,n=e,o=f,B=3*(o+m),0!==(p=n[B]))for(;;){if(q>>=n[B+1],r-=n[B+1],0!==(16&p)){for(p&=15,y=n[B+2]+(q&j[p]),q>>=p,r-=p;15>r;)t--,q|=(255&l.read_byte(s++))<<r,r+=8;for(m=q&x,n=h,o=i,B=3*(o+m),p=n[B];;){if(q>>=n[B+1],r-=n[B+1],0!==(16&p)){for(p&=15;p>r;)t--,q|=(255&l.read_byte(s++))<<r,r+=8;if(z=n[B+2]+(q&j[p]),q>>=p,r-=p,v-=y,u>=z)A=u-z,u-A>0&&2>u-A?(k.window[u++]=k.window[A++],k.window[u++]=k.window[A++],y-=2):(k.window.set(k.window.subarray(A,A+2),u),u+=2,A+=2,y-=2);else{A=u-z;do A+=k.end;while(0>A);if(p=k.end-A,y>p){if(y-=p,u-A>0&&p>u-A){do k.window[u++]=k.window[A++];while(0!==--p)}else k.window.set(k.window.subarray(A,A+p),u),u+=p,A+=p,p=0;A=0}}if(u-A>0&&y>u-A){do k.window[u++]=k.window[A++];while(0!==--y)}else k.window.set(k.window.subarray(A,A+y),u),u+=y,A+=y,y=0;break}if(0!==(64&p))return l.msg="invalid distance code",y=l.avail_in-t,y=y>r>>3?r>>3:y,t+=y,s-=y,r-=y<<3,k.bitb=q,k.bitk=r,l.avail_in=t,l.total_in+=s-l.next_in_index,l.next_in_index=s,k.write=u,g;m+=n[B+2],m+=q&j[p],B=3*(o+m),p=n[B]}break}if(0!==(64&p))return 0!==(32&p)?(y=l.avail_in-t,y=y>r>>3?r>>3:y,t+=y,s-=y,r-=y<<3,k.bitb=q,k.bitk=r,l.avail_in=t,l.total_in+=s-l.next_in_index,l.next_in_index=s,k.write=u,d):(l.msg="invalid literal/length code",y=l.avail_in-t,y=y>r>>3?r>>3:y,t+=y,s-=y,r-=y<<3,k.bitb=q,k.bitk=r,l.avail_in=t,l.total_in+=s-l.next_in_index,l.next_in_index=s,k.write=u,g);if(m+=n[B+2],m+=q&j[p],B=3*(o+m),0===(p=n[B])){q>>=n[B+1],r-=n[B+1],k.window[u++]=n[B+2],v--;break}}else q>>=n[B+1],r-=n[B+1],k.window[u++]=n[B+2],v--}while(v>=258&&t>=10);return y=l.avail_in-t,y=y>r>>3?r>>3:y,t+=y,s-=y,r-=y<<3,k.bitb=q,k.bitk=r,l.avail_in=t,l.total_in+=s-l.next_in_index,l.next_in_index=s,k.write=u,c}var b,h,q,s,a=this,e=0,i=0,k=0,l=0,m=0,n=0,o=0,p=0,r=0,t=0;a.init=function(a,c,d,e,f,g){b=x,o=a,p=c,q=d,r=e,s=f,t=g,h=null},a.proc=function(a,v,w){var H,I,J,N,O,P,Q,K=0,L=0,M=0;for(M=v.next_in_index,N=v.avail_in,K=a.bitb,L=a.bitk,O=a.write,P=O<a.read?a.read-O-1:a.end-O;;)switch(b){case x:if(P>=258&&N>=10&&(a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,w=u(o,p,q,r,s,t,a,v),M=v.next_in_index,N=v.avail_in,K=a.bitb,L=a.bitk,O=a.write,P=O<a.read?a.read-O-1:a.end-O,w!=c)){b=w==d?E:G;break}k=o,h=q,i=r,b=y;case y:for(H=k;H>L;){if(0===N)return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);w=c,N--,K|=(255&v.read_byte(M++))<<L,L+=8}if(I=3*(i+(K&j[H])),K>>>=h[I+1],L-=h[I+1],J=h[I],0===J){l=h[I+2],b=D;break}if(0!==(16&J)){m=15&J,e=h[I+2],b=z;break}if(0===(64&J)){k=J,i=I/3+h[I+2];break}if(0!==(32&J)){b=E;break}return b=G,v.msg="invalid literal/length code",w=g,a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);case z:for(H=m;H>L;){if(0===N)return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);w=c,N--,K|=(255&v.read_byte(M++))<<L,L+=8}e+=K&j[H],K>>=H,L-=H,k=p,h=s,i=t,b=A;case A:for(H=k;H>L;){if(0===N)return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);w=c,N--,K|=(255&v.read_byte(M++))<<L,L+=8}if(I=3*(i+(K&j[H])),K>>=h[I+1],L-=h[I+1],J=h[I],0!==(16&J)){m=15&J,n=h[I+2],b=B;break}if(0===(64&J)){k=J,i=I/3+h[I+2];break}return b=G,v.msg="invalid distance code",w=g,a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);case B:for(H=m;H>L;){if(0===N)return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);w=c,N--,K|=(255&v.read_byte(M++))<<L,L+=8}n+=K&j[H],K>>=H,L-=H,b=C;case C:for(Q=O-n;0>Q;)Q+=a.end;for(;0!==e;){if(0===P&&(O==a.end&&0!==a.read&&(O=0,P=O<a.read?a.read-O-1:a.end-O),0===P&&(a.write=O,w=a.inflate_flush(v,w),O=a.write,P=O<a.read?a.read-O-1:a.end-O,O==a.end&&0!==a.read&&(O=0,P=O<a.read?a.read-O-1:a.end-O),0===P)))return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);a.window[O++]=a.window[Q++],P--,Q==a.end&&(Q=0),e--}b=x;break;case D:if(0===P&&(O==a.end&&0!==a.read&&(O=0,P=O<a.read?a.read-O-1:a.end-O),0===P&&(a.write=O,w=a.inflate_flush(v,w),O=a.write,P=O<a.read?a.read-O-1:a.end-O,O==a.end&&0!==a.read&&(O=0,P=O<a.read?a.read-O-1:a.end-O),0===P)))return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);w=c,a.window[O++]=l,P--,b=x;break;case E:if(L>7&&(L-=8,N++,M--),a.write=O,w=a.inflate_flush(v,w),O=a.write,P=O<a.read?a.read-O-1:a.end-O,a.read!=a.write)return a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);b=F;case F:return w=d,a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);case G:return w=g,a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w);default:return w=f,a.bitb=K,a.bitk=L,v.avail_in=N,v.total_in+=M-v.next_in_index,v.next_in_index=M,a.write=O,a.inflate_flush(v,w)}},a.free=function(){}}function T(a,b){var o,e=this,h=J,l=0,m=0,n=0,p=[0],q=[0],r=new H,s=0,t=new Int32Array(3*k),u=0,v=new w;e.bitk=0,e.bitb=0,e.window=new Uint8Array(b),e.end=b,e.read=0,e.write=0,e.reset=function(a,b){b&&(b[0]=u),h==P&&r.free(a),h=J,e.bitk=0,e.bitb=0,e.read=e.write=0},e.reset(a,null),e.inflate_flush=function(a,b){var f=a.next_out_index,g=e.read,d=(g<=e.write?e.write:e.end)-g;return d>a.avail_out&&(d=a.avail_out),0!==d&&b==i&&(b=c),a.avail_out-=d,a.total_out+=d,a.next_out.set(e.window.subarray(g,g+d),f),f+=d,g+=d,g==e.end&&(g=0,e.write==e.end&&(e.write=0),d=e.write-g,d>a.avail_out&&(d=a.avail_out),0!==d&&b==i&&(b=c),a.avail_out-=d,a.total_out+=d,a.next_out.set(e.window.subarray(g,g+d),f),f+=d,g+=d),a.next_out_index=f,e.read=g,b},e.proc=function(a,b){for(var i,B,C,D,E,F,G,H,T,U,V,W,x=a.next_in_index,y=a.avail_in,k=e.bitb,u=e.bitk,z=e.write,A=z<e.read?e.read-z-1:e.end-z;;)switch(h){case J:for(;3>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}switch(i=7&k,s=1&i,i>>>1){case 0:k>>>=3,u-=3,i=7&u,k>>>=i,u-=i,h=K;break;case 1:C=[],D=[],E=[[]],F=[[]],w.inflate_trees_fixed(C,D,E,F),r.init(C[0],D[0],E[0],0,F[0],0),k>>>=3,u-=3,h=P;break;case 2:k>>>=3,u-=3,h=M;break;case 3:return k>>>=3,u-=3,h=S,a.msg="invalid block type",b=g,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b)}break;case K:for(;32>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}if((65535&~k>>>16)!=(65535&k))return h=S,a.msg="invalid stored block lengths",b=g,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);l=65535&k,k=u=0,h=0!==l?L:0!==s?Q:J;break;case L:if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);if(0===A&&(z==e.end&&0!==e.read&&(z=0,A=z<e.read?e.read-z-1:e.end-z),0===A&&(e.write=z,b=e.inflate_flush(a,b),z=e.write,A=z<e.read?e.read-z-1:e.end-z,z==e.end&&0!==e.read&&(z=0,A=z<e.read?e.read-z-1:e.end-z),0===A)))return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);if(b=c,i=l,i>y&&(i=y),i>A&&(i=A),e.window.set(a.read_buf(x,i),z),x+=i,y-=i,z+=i,A-=i,0!==(l-=i))break;h=0!==s?Q:J;break;case M:for(;14>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}if(m=i=16383&k,(31&i)>29||(31&i>>5)>29)return h=S,a.msg="too many length or distance symbols",b=g,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);if(i=258+(31&i)+(31&i>>5),!o||o.length<i)o=[];else for(B=0;i>B;B++)o[B]=0;k>>>=14,u-=14,n=0,h=N;case N:for(;4+(m>>>10)>n;){for(;3>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}o[I[n++]]=7&k,k>>>=3,u-=3}for(;19>n;)o[I[n++]]=0;if(p[0]=7,i=v.inflate_trees_bits(o,p,q,t,a),i!=c)return b=i,b==g&&(o=null,h=S),e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);n=0,h=O;case O:for(;;){if(i=m,n>=258+(31&i)+(31&i>>5))break;for(i=p[0];i>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}if(i=t[3*(q[0]+(k&j[i]))+1],H=t[3*(q[0]+(k&j[i]))+2],16>H)k>>>=i,u-=i,o[n++]=H;else{for(B=18==H?7:H-14,G=18==H?11:3;i+B>u;){if(0===y)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);b=c,y--,k|=(255&a.read_byte(x++))<<u,u+=8}if(k>>>=i,u-=i,G+=k&j[B],k>>>=B,u-=B,B=n,i=m,B+G>258+(31&i)+(31&i>>5)||16==H&&1>B)return o=null,h=S,a.msg="invalid bit length repeat",b=g,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);H=16==H?o[B-1]:0;do o[B++]=H;while(0!==--G);n=B}}if(q[0]=-1,T=[],U=[],V=[],W=[],T[0]=9,U[0]=6,i=m,i=v.inflate_trees_dynamic(257+(31&i),1+(31&i>>5),o,T,U,V,W,t,a),i!=c)return i==g&&(o=null,h=S),b=i,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);r.init(T[0],U[0],t,V[0],t,W[0]),h=P;case P:if(e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,(b=r.proc(e,a,b))!=d)return e.inflate_flush(a,b);if(b=c,r.free(a),x=a.next_in_index,y=a.avail_in,k=e.bitb,u=e.bitk,z=e.write,A=z<e.read?e.read-z-1:e.end-z,0===s){h=J;break}h=Q;case Q:if(e.write=z,b=e.inflate_flush(a,b),z=e.write,A=z<e.read?e.read-z-1:e.end-z,e.read!=e.write)return e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);h=R;case R:return b=d,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);case S:return b=g,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b);default:return b=f,e.bitb=k,e.bitk=u,a.avail_in=y,a.total_in+=x-a.next_in_index,a.next_in_index=x,e.write=z,e.inflate_flush(a,b)}},e.free=function(a){e.reset(a,null),e.window=null,t=null},e.set_dictionary=function(a,b,c){e.window.set(a.subarray(b,b+c),0),e.read=e.write=c},e.sync_point=function(){return h==K?1:0}}function fb(){function b(a){return a&&a.istate?(a.total_in=a.total_out=0,a.msg=null,a.istate.mode=bb,a.istate.blocks.reset(a,null),c):f}var a=this;a.mode=0,a.method=0,a.was=[0],a.need=0,a.marker=0,a.wbits=0,a.inflateEnd=function(b){return a.blocks&&a.blocks.free(b),a.blocks=null,c},a.inflateInit=function(d,e){return d.msg=null,a.blocks=null,8>e||e>15?(a.inflateEnd(d),f):(a.wbits=e,d.istate.blocks=new T(d,1<<e),b(d),c)},a.inflate=function(a,b){var h,j;if(!a||!a.istate||!a.next_in)return f;for(b=b==m?i:c,h=i;;)switch(a.istate.mode){case W:if(0===a.avail_in)return h;if(h=b,a.avail_in--,a.total_in++,(15&(a.istate.method=a.read_byte(a.next_in_index++)))!=V){a.istate.mode=db,a.msg="unknown compression method",a.istate.marker=5;break}if((a.istate.method>>4)+8>a.istate.wbits){a.istate.mode=db,a.msg="invalid window size",a.istate.marker=5;break}a.istate.mode=X;case X:if(0===a.avail_in)return h;if(h=b,a.avail_in--,a.total_in++,j=255&a.read_byte(a.next_in_index++),0!==((a.istate.method<<8)+j)%31){a.istate.mode=db,a.msg="incorrect header check",a.istate.marker=5;break}if(0===(j&U)){a.istate.mode=bb;break}a.istate.mode=Y;case Y:if(0===a.avail_in)return h;h=b,a.avail_in--,a.total_in++,a.istate.need=4278190080&(255&a.read_byte(a.next_in_index++))<<24,a.istate.mode=Z;case Z:if(0===a.avail_in)return h;h=b,a.avail_in--,a.total_in++,a.istate.need+=16711680&(255&a.read_byte(a.next_in_index++))<<16,a.istate.mode=$;case $:if(0===a.avail_in)return h;h=b,a.avail_in--,a.total_in++,a.istate.need+=65280&(255&a.read_byte(a.next_in_index++))<<8,a.istate.mode=_;case _:return 0===a.avail_in?h:(h=b,a.avail_in--,a.total_in++,a.istate.need+=255&a.read_byte(a.next_in_index++),a.istate.mode=ab,e);case ab:return a.istate.mode=db,a.msg="need dictionary",a.istate.marker=0,f;case bb:if(h=a.istate.blocks.proc(a,h),h==g){a.istate.mode=db,a.istate.marker=0;break}if(h==c&&(h=b),h!=d)return h;h=b,a.istate.blocks.reset(a,a.istate.was),a.istate.mode=cb;case cb:return d;case db:return g;default:return f}},a.inflateSetDictionary=function(a,b,d){var e=0,g=d;return a&&a.istate&&a.istate.mode==ab?(g>=1<<a.istate.wbits&&(g=(1<<a.istate.wbits)-1,e=d-g),a.istate.blocks.set_dictionary(b,e,g),a.istate.mode=bb,c):f},a.inflateSync=function(a){var d,e,h,j,k;if(!a||!a.istate)return f;if(a.istate.mode!=db&&(a.istate.mode=db,a.istate.marker=0),0===(d=a.avail_in))return i;for(e=a.next_in_index,h=a.istate.marker;0!==d&&4>h;)a.read_byte(e)==eb[h]?h++:h=0!==a.read_byte(e)?0:4-h,e++,d--;return a.total_in+=e-a.next_in_index,a.next_in_index=e,a.avail_in=d,a.istate.marker=h,4!=h?g:(j=a.total_in,k=a.total_out,b(a),a.total_in=j,a.total_out=k,a.istate.mode=bb,c)},a.inflateSyncPoint=function(a){return a&&a.istate&&a.istate.blocks?a.istate.blocks.sync_point():f}}function gb(){}function hb(){var a=this,b=new gb,e=512,f=l,g=new Uint8Array(e),h=!1;b.inflateInit(),b.next_out=g,a.append=function(a,j){var k,p,l=[],m=0,n=0,o=0;if(0!==a.length){b.next_in_index=0,b.next_in=a,b.avail_in=a.length;do{if(b.next_out_index=0,b.avail_out=e,0!==b.avail_in||h||(b.next_in_index=0,h=!0),k=b.inflate(f),h&&k===i){if(0!==b.avail_in)throw new Error("inflating: bad input")}else if(k!==c&&k!==d)throw new Error("inflating: "+b.msg);if((h||k===d)&&b.avail_in===a.length)throw new Error("inflating: bad input");b.next_out_index&&(b.next_out_index===e?l.push(new Uint8Array(g)):l.push(new Uint8Array(g.subarray(0,b.next_out_index)))),o+=b.next_out_index,j&&b.next_in_index>0&&b.next_in_index!=m&&(j(b.next_in_index),m=b.next_in_index)}while(b.avail_in>0||0===b.avail_out);return p=new Uint8Array(o),l.forEach(function(a){p.set(a,n),n+=a.length}),p}},a.flush=function(){b.inflateEnd()}}var x,y,z,A,B,C,D,E,F,G,I,J,K,L,M,N,O,P,Q,R,S,U,V,W,X,Y,Z,$,_,ab,bb,cb,db,eb,ib,b=15,c=0,d=1,e=2,f=-2,g=-3,h=-4,i=-5,j=[0,1,3,7,15,31,63,127,255,511,1023,2047,4095,8191,16383,32767,65535],k=1440,l=0,m=4,n=9,o=5,p=[96,7,256,0,8,80,0,8,16,84,8,115,82,7,31,0,8,112,0,8,48,0,9,192,80,7,10,0,8,96,0,8,32,0,9,160,0,8,0,0,8,128,0,8,64,0,9,224,80,7,6,0,8,88,0,8,24,0,9,144,83,7,59,0,8,120,0,8,56,0,9,208,81,7,17,0,8,104,0,8,40,0,9,176,0,8,8,0,8,136,0,8,72,0,9,240,80,7,4,0,8,84,0,8,20,85,8,227,83,7,43,0,8,116,0,8,52,0,9,200,81,7,13,0,8,100,0,8,36,0,9,168,0,8,4,0,8,132,0,8,68,0,9,232,80,7,8,0,8,92,0,8,28,0,9,152,84,7,83,0,8,124,0,8,60,0,9,216,82,7,23,0,8,108,0,8,44,0,9,184,0,8,12,0,8,140,0,8,76,0,9,248,80,7,3,0,8,82,0,8,18,85,8,163,83,7,35,0,8,114,0,8,50,0,9,196,81,7,11,0,8,98,0,8,34,0,9,164,0,8,2,0,8,130,0,8,66,0,9,228,80,7,7,0,8,90,0,8,26,0,9,148,84,7,67,0,8,122,0,8,58,0,9,212,82,7,19,0,8,106,0,8,42,0,9,180,0,8,10,0,8,138,0,8,74,0,9,244,80,7,5,0,8,86,0,8,22,192,8,0,83,7,51,0,8,118,0,8,54,0,9,204,81,7,15,0,8,102,0,8,38,0,9,172,0,8,6,0,8,134,0,8,70,0,9,236,80,7,9,0,8,94,0,8,30,0,9,156,84,7,99,0,8,126,0,8,62,0,9,220,82,7,27,0,8,110,0,8,46,0,9,188,0,8,14,0,8,142,0,8,78,0,9,252,96,7,256,0,8,81,0,8,17,85,8,131,82,7,31,0,8,113,0,8,49,0,9,194,80,7,10,0,8,97,0,8,33,0,9,162,0,8,1,0,8,129,0,8,65,0,9,226,80,7,6,0,8,89,0,8,25,0,9,146,83,7,59,0,8,121,0,8,57,0,9,210,81,7,17,0,8,105,0,8,41,0,9,178,0,8,9,0,8,137,0,8,73,0,9,242,80,7,4,0,8,85,0,8,21,80,8,258,83,7,43,0,8,117,0,8,53,0,9,202,81,7,13,0,8,101,0,8,37,0,9,170,0,8,5,0,8,133,0,8,69,0,9,234,80,7,8,0,8,93,0,8,29,0,9,154,84,7,83,0,8,125,0,8,61,0,9,218,82,7,23,0,8,109,0,8,45,0,9,186,0,8,13,0,8,141,0,8,77,0,9,250,80,7,3,0,8,83,0,8,19,85,8,195,83,7,35,0,8,115,0,8,51,0,9,198,81,7,11,0,8,99,0,8,35,0,9,166,0,8,3,0,8,131,0,8,67,0,9,230,80,7,7,0,8,91,0,8,27,0,9,150,84,7,67,0,8,123,0,8,59,0,9,214,82,7,19,0,8,107,0,8,43,0,9,182,0,8,11,0,8,139,0,8,75,0,9,246,80,7,5,0,8,87,0,8,23,192,8,0,83,7,51,0,8,119,0,8,55,0,9,206,81,7,15,0,8,103,0,8,39,0,9,174,0,8,7,0,8,135,0,8,71,0,9,238,80,7,9,0,8,95,0,8,31,0,9,158,84,7,99,0,8,127,0,8,63,0,9,222,82,7,27,0,8,111,0,8,47,0,9,190,0,8,15,0,8,143,0,8,79,0,9,254,96,7,256,0,8,80,0,8,16,84,8,115,82,7,31,0,8,112,0,8,48,0,9,193,80,7,10,0,8,96,0,8,32,0,9,161,0,8,0,0,8,128,0,8,64,0,9,225,80,7,6,0,8,88,0,8,24,0,9,145,83,7,59,0,8,120,0,8,56,0,9,209,81,7,17,0,8,104,0,8,40,0,9,177,0,8,8,0,8,136,0,8,72,0,9,241,80,7,4,0,8,84,0,8,20,85,8,227,83,7,43,0,8,116,0,8,52,0,9,201,81,7,13,0,8,100,0,8,36,0,9,169,0,8,4,0,8,132,0,8,68,0,9,233,80,7,8,0,8,92,0,8,28,0,9,153,84,7,83,0,8,124,0,8,60,0,9,217,82,7,23,0,8,108,0,8,44,0,9,185,0,8,12,0,8,140,0,8,76,0,9,249,80,7,3,0,8,82,0,8,18,85,8,163,83,7,35,0,8,114,0,8,50,0,9,197,81,7,11,0,8,98,0,8,34,0,9,165,0,8,2,0,8,130,0,8,66,0,9,229,80,7,7,0,8,90,0,8,26,0,9,149,84,7,67,0,8,122,0,8,58,0,9,213,82,7,19,0,8,106,0,8,42,0,9,181,0,8,10,0,8,138,0,8,74,0,9,245,80,7,5,0,8,86,0,8,22,192,8,0,83,7,51,0,8,118,0,8,54,0,9,205,81,7,15,0,8,102,0,8,38,0,9,173,0,8,6,0,8,134,0,8,70,0,9,237,80,7,9,0,8,94,0,8,30,0,9,157,84,7,99,0,8,126,0,8,62,0,9,221,82,7,27,0,8,110,0,8,46,0,9,189,0,8,14,0,8,142,0,8,78,0,9,253,96,7,256,0,8,81,0,8,17,85,8,131,82,7,31,0,8,113,0,8,49,0,9,195,80,7,10,0,8,97,0,8,33,0,9,163,0,8,1,0,8,129,0,8,65,0,9,227,80,7,6,0,8,89,0,8,25,0,9,147,83,7,59,0,8,121,0,8,57,0,9,211,81,7,17,0,8,105,0,8,41,0,9,179,0,8,9,0,8,137,0,8,73,0,9,243,80,7,4,0,8,85,0,8,21,80,8,258,83,7,43,0,8,117,0,8,53,0,9,203,81,7,13,0,8,101,0,8,37,0,9,171,0,8,5,0,8,133,0,8,69,0,9,235,80,7,8,0,8,93,0,8,29,0,9,155,84,7,83,0,8,125,0,8,61,0,9,219,82,7,23,0,8,109,0,8,45,0,9,187,0,8,13,0,8,141,0,8,77,0,9,251,80,7,3,0,8,83,0,8,19,85,8,195,83,7,35,0,8,115,0,8,51,0,9,199,81,7,11,0,8,99,0,8,35,0,9,167,0,8,3,0,8,131,0,8,67,0,9,231,80,7,7,0,8,91,0,8,27,0,9,151,84,7,67,0,8,123,0,8,59,0,9,215,82,7,19,0,8,107,0,8,43,0,9,183,0,8,11,0,8,139,0,8,75,0,9,247,80,7,5,0,8,87,0,8,23,192,8,0,83,7,51,0,8,119,0,8,55,0,9,207,81,7,15,0,8,103,0,8,39,0,9,175,0,8,7,0,8,135,0,8,71,0,9,239,80,7,9,0,8,95,0,8,31,0,9,159,84,7,99,0,8,127,0,8,63,0,9,223,82,7,27,0,8,111,0,8,47,0,9,191,0,8,15,0,8,143,0,8,79,0,9,255],q=[80,5,1,87,5,257,83,5,17,91,5,4097,81,5,5,89,5,1025,85,5,65,93,5,16385,80,5,3,88,5,513,84,5,33,92,5,8193,82,5,9,90,5,2049,86,5,129,192,5,24577,80,5,2,87,5,385,83,5,25,91,5,6145,81,5,7,89,5,1537,85,5,97,93,5,24577,80,5,4,88,5,769,84,5,49,92,5,12289,82,5,13,90,5,3073,86,5,193,192,5,24577],r=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258,0,0],s=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0,112,112],t=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577],u=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13],v=15;w.inflate_trees_fixed=function(a,b,d,e){return a[0]=n,b[0]=o,d[0]=p,e[0]=q,c},x=0,y=1,z=2,A=3,B=4,C=5,D=6,E=7,F=8,G=9,I=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15],J=0,K=1,L=2,M=3,N=4,O=5,P=6,Q=7,R=8,S=9,U=32,V=8,W=0,X=1,Y=2,Z=3,$=4,_=5,ab=6,bb=7,cb=12,db=13,eb=[0,0,255,255],gb.prototype={inflateInit:function(a){var c=this;return c.istate=new fb,a||(a=b),c.istate.inflateInit(c,a)},inflate:function(a){var b=this;return b.istate?b.istate.inflate(b,a):f},inflateEnd:function(){var b,a=this;return a.istate?(b=a.istate.inflateEnd(a),a.istate=null,b):f},inflateSync:function(){var a=this;return a.istate?a.istate.inflateSync(a):f},inflateSetDictionary:function(a,b){var c=this;return c.istate?c.istate.inflateSetDictionary(c,a,b):f},read_byte:function(a){var b=this;return b.next_in.subarray(a,a+1)[0]},read_buf:function(a,b){var c=this;return c.next_in.subarray(a,a+b)}},ib=a.zip||a,ib.Inflater=ib._jzlib_Inflater=hb}!function(a){"use strict";function d(){inflate(a),postMessage({type:"importScripts"})}function e(b){var d=a[b.codecClass],e=b.sn;if(c[e])throw Error("duplicated sn");c[e]={codec:new d(b.options),crcInput:"input"===b.crcType,crcOutput:"output"===b.crcType,crc:new j},postMessage({type:"newTask",sn:e})}function g(a){var i,j,k,m,n,o,p,b=a.sn,d=a.type,g=a.data,h=c[b];if(!h&&a.codecClass&&(e(a),h=c[b]),i="append"===d,j=f(),i)try{k=h.codec.append(g,function(a){postMessage({type:"progress",sn:b,loaded:a})})}catch(l){throw delete c[b],l}else delete c[b],k=h.codec.flush();m=f()-j,j=f(),g&&h.crcInput&&h.crc.append(g),k&&h.crcOutput&&h.crc.append(k),n=f()-j,o={type:d,sn:b,codecTime:m,crcTime:n},p=[],k&&(o.data=k,p.push(k.buffer)),i||!h.crcInput&&!h.crcOutput||(o.crc=h.crc.get());try{postMessage(o,p)}catch(q){postMessage(o)}}function h(a,b,c){var d={type:a,sn:b,error:i(c)};postMessage(d)}function i(a){return{message:a.message,stack:a.stack}}function j(){this.crc=-1}function k(){}var b,c,f;if(a.zWorkerInitialized)throw new Error("z-worker.js should be run only once");a.zWorkerInitialized=!0,addEventListener("message",function(a){var c=a.data,d=c.type,e=c.sn,f=b[d];if(f)try{f(c)}catch(g){h(d,e,g)}postMessage({type:"echo",originalType:d,sn:e})}),b={importScripts:d,newTask:e,append:g,flush:g},c={},f=a.performance?a.performance.now.bind(a.performance):Date.now,j.prototype.append=function(a){var d,e,b=0|this.crc,c=this.table;for(d=0,e=0|a.length;e>d;d++)b=b>>>8^c[255&(b^a[d])];this.crc=b},j.prototype.get=function(){return~this.crc},j.prototype.table=function(){var a,b,c,d=[];for(a=0;256>a;a++){for(c=a,b=0;8>b;b++)1&c?c=3988292384^c>>>1:c>>>=1;d[a]=c}return d}(),a.NOOP=k,k.prototype.append=function(a){return a},k.prototype.flush=function(){}}(this);';
+},{}],55:[function(require,module,exports){
 /*
- * This file is used by module bundlers (browserify/webpack/etc) when
- * including a stream implementation. We use "readable-stream" to get a
- * consistent behavior between nodejs versions but bundlers often have a shim
- * for "stream". Using this shim greatly improve the compatibility and greatly
- * reduce the final size of the bundle (only one stream implementation, not
- * two).
+ Modified from https://gildas-lormeau.github.io/zip.js/, we do a little change to let it work fine with Browserfy/Webpack.
+
+ Copyright (c) 2013 Gildas Lormeau. All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright
+ notice, this list of conditions and the following disclaimer in
+ the documentation and/or other materials provided with the distribution.
+
+ 3. The names of the authors may not be used to endorse or promote products
+ derived from this software without specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESSED OR IMPLIED WARRANTIES,
+ INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL JCRAFT,
+ INC. OR ANY CONTRIBUTORS TO THIS SOFTWARE BE LIABLE FOR ANY DIRECT, INDIRECT,
+ INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-module.exports = _dereq_("stream");
 
-},{"stream":110}],59:[function(_dereq_,module,exports){
-'use strict';
-var DataReader = _dereq_('./DataReader');
-var utils = _dereq_('../utils');
-
-function ArrayReader(data) {
-    DataReader.call(this, data);
-	for(var i = 0; i < this.data.length; i++) {
-		data[i] = data[i] & 0xFF;
-	}
-}
-utils.inherits(ArrayReader, DataReader);
-/**
- * @see DataReader.byteAt
- */
-ArrayReader.prototype.byteAt = function(i) {
-    return this.data[this.zero + i];
-};
-/**
- * @see DataReader.lastIndexOfSignature
- */
-ArrayReader.prototype.lastIndexOfSignature = function(sig) {
-    var sig0 = sig.charCodeAt(0),
-        sig1 = sig.charCodeAt(1),
-        sig2 = sig.charCodeAt(2),
-        sig3 = sig.charCodeAt(3);
-    for (var i = this.length - 4; i >= 0; --i) {
-        if (this.data[i] === sig0 && this.data[i + 1] === sig1 && this.data[i + 2] === sig2 && this.data[i + 3] === sig3) {
-            return i - this.zero;
-        }
-    }
-
-    return -1;
-};
-/**
- * @see DataReader.readAndCheckSignature
- */
-ArrayReader.prototype.readAndCheckSignature = function (sig) {
-    var sig0 = sig.charCodeAt(0),
-        sig1 = sig.charCodeAt(1),
-        sig2 = sig.charCodeAt(2),
-        sig3 = sig.charCodeAt(3),
-        data = this.readData(4);
-    return sig0 === data[0] && sig1 === data[1] && sig2 === data[2] && sig3 === data[3];
-};
-/**
- * @see DataReader.readData
- */
-ArrayReader.prototype.readData = function(size) {
-    this.checkOffset(size);
-    if(size === 0) {
-        return [];
-    }
-    var result = this.data.slice(this.zero + this.index, this.zero + this.index + size);
-    this.index += size;
-    return result;
-};
-module.exports = ArrayReader;
-
-},{"../utils":74,"./DataReader":60}],60:[function(_dereq_,module,exports){
-'use strict';
-var utils = _dereq_('../utils');
-
-function DataReader(data) {
-    this.data = data; // type : see implementation
-    this.length = data.length;
-    this.index = 0;
-    this.zero = 0;
-}
-DataReader.prototype = {
-    /**
-     * Check that the offset will not go too far.
-     * @param {string} offset the additional offset to check.
-     * @throws {Error} an Error if the offset is out of bounds.
-     */
-    checkOffset: function(offset) {
-        this.checkIndex(this.index + offset);
-    },
-    /**
-     * Check that the specified index will not be too far.
-     * @param {string} newIndex the index to check.
-     * @throws {Error} an Error if the index is out of bounds.
-     */
-    checkIndex: function(newIndex) {
-        if (this.length < this.zero + newIndex || newIndex < 0) {
-            throw new Error("End of data reached (data length = " + this.length + ", asked index = " + (newIndex) + "). Corrupted zip ?");
-        }
-    },
-    /**
-     * Change the index.
-     * @param {number} newIndex The new index.
-     * @throws {Error} if the new index is out of the data.
-     */
-    setIndex: function(newIndex) {
-        this.checkIndex(newIndex);
-        this.index = newIndex;
-    },
-    /**
-     * Skip the next n bytes.
-     * @param {number} n the number of bytes to skip.
-     * @throws {Error} if the new index is out of the data.
-     */
-    skip: function(n) {
-        this.setIndex(this.index + n);
-    },
-    /**
-     * Get the byte at the specified index.
-     * @param {number} i the index to use.
-     * @return {number} a byte.
-     */
-    byteAt: function(i) {
-        // see implementations
-    },
-    /**
-     * Get the next number with a given byte size.
-     * @param {number} size the number of bytes to read.
-     * @return {number} the corresponding number.
-     */
-    readInt: function(size) {
-        var result = 0,
-            i;
-        this.checkOffset(size);
-        for (i = this.index + size - 1; i >= this.index; i--) {
-            result = (result << 8) + this.byteAt(i);
-        }
-        this.index += size;
-        return result;
-    },
-    /**
-     * Get the next string with a given byte size.
-     * @param {number} size the number of bytes to read.
-     * @return {string} the corresponding string.
-     */
-    readString: function(size) {
-        return utils.transformTo("string", this.readData(size));
-    },
-    /**
-     * Get raw data without conversion, <size> bytes.
-     * @param {number} size the number of bytes to read.
-     * @return {Object} the raw data, implementation specific.
-     */
-    readData: function(size) {
-        // see implementations
-    },
-    /**
-     * Find the last occurence of a zip signature (4 bytes).
-     * @param {string} sig the signature to find.
-     * @return {number} the index of the last occurence, -1 if not found.
-     */
-    lastIndexOfSignature: function(sig) {
-        // see implementations
-    },
-    /**
-     * Read the signature (4 bytes) at the current position and compare it with sig.
-     * @param {string} sig the expected signature
-     * @return {boolean} true if the signature matches, false otherwise.
-     */
-    readAndCheckSignature: function(sig) {
-        // see implementations
-    },
-    /**
-     * Get the next date.
-     * @return {Date} the date.
-     */
-    readDate: function() {
-        var dostime = this.readInt(4);
-        return new Date(Date.UTC(
-        ((dostime >> 25) & 0x7f) + 1980, // year
-        ((dostime >> 21) & 0x0f) - 1, // month
-        (dostime >> 16) & 0x1f, // day
-        (dostime >> 11) & 0x1f, // hour
-        (dostime >> 5) & 0x3f, // minute
-        (dostime & 0x1f) << 1)); // second
-    }
-};
-module.exports = DataReader;
-
-},{"../utils":74}],61:[function(_dereq_,module,exports){
-'use strict';
-var Uint8ArrayReader = _dereq_('./Uint8ArrayReader');
-var utils = _dereq_('../utils');
-
-function NodeBufferReader(data) {
-    Uint8ArrayReader.call(this, data);
-}
-utils.inherits(NodeBufferReader, Uint8ArrayReader);
-
-/**
- * @see DataReader.readData
- */
-NodeBufferReader.prototype.readData = function(size) {
-    this.checkOffset(size);
-    var result = this.data.slice(this.zero + this.index, this.zero + this.index + size);
-    this.index += size;
-    return result;
-};
-module.exports = NodeBufferReader;
-
-},{"../utils":74,"./Uint8ArrayReader":63}],62:[function(_dereq_,module,exports){
-'use strict';
-var DataReader = _dereq_('./DataReader');
-var utils = _dereq_('../utils');
-
-function StringReader(data) {
-    DataReader.call(this, data);
-}
-utils.inherits(StringReader, DataReader);
-/**
- * @see DataReader.byteAt
- */
-StringReader.prototype.byteAt = function(i) {
-    return this.data.charCodeAt(this.zero + i);
-};
-/**
- * @see DataReader.lastIndexOfSignature
- */
-StringReader.prototype.lastIndexOfSignature = function(sig) {
-    return this.data.lastIndexOf(sig) - this.zero;
-};
-/**
- * @see DataReader.readAndCheckSignature
- */
-StringReader.prototype.readAndCheckSignature = function (sig) {
-    var data = this.readData(4);
-    return sig === data;
-};
-/**
- * @see DataReader.readData
- */
-StringReader.prototype.readData = function(size) {
-    this.checkOffset(size);
-    // this will work because the constructor applied the "& 0xff" mask.
-    var result = this.data.slice(this.zero + this.index, this.zero + this.index + size);
-    this.index += size;
-    return result;
-};
-module.exports = StringReader;
-
-},{"../utils":74,"./DataReader":60}],63:[function(_dereq_,module,exports){
-'use strict';
-var ArrayReader = _dereq_('./ArrayReader');
-var utils = _dereq_('../utils');
-
-function Uint8ArrayReader(data) {
-    ArrayReader.call(this, data);
-}
-utils.inherits(Uint8ArrayReader, ArrayReader);
-/**
- * @see DataReader.readData
- */
-Uint8ArrayReader.prototype.readData = function(size) {
-    this.checkOffset(size);
-    if(size === 0) {
-        // in IE10, when using subarray(idx, idx), we get the array [0x00] instead of [].
-        return new Uint8Array(0);
-    }
-    var result = this.data.subarray(this.zero + this.index, this.zero + this.index + size);
-    this.index += size;
-    return result;
-};
-module.exports = Uint8ArrayReader;
-
-},{"../utils":74,"./ArrayReader":59}],64:[function(_dereq_,module,exports){
-'use strict';
-
-var utils = _dereq_('../utils');
-var support = _dereq_('../support');
-var ArrayReader = _dereq_('./ArrayReader');
-var StringReader = _dereq_('./StringReader');
-var NodeBufferReader = _dereq_('./NodeBufferReader');
-var Uint8ArrayReader = _dereq_('./Uint8ArrayReader');
-
-/**
- * Create a reader adapted to the data.
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data to read.
- * @return {DataReader} the data reader.
- */
-module.exports = function (data) {
-    var type = utils.getTypeOf(data);
-    utils.checkSupport(type);
-    if (type === "string" && !support.uint8array) {
-        return new StringReader(data);
-    }
-    if (type === "nodebuffer") {
-        return new NodeBufferReader(data);
-    }
-    if (support.uint8array) {
-        return new Uint8ArrayReader(utils.transformTo("uint8array", data));
-    }
-    return new ArrayReader(utils.transformTo("array", data));
-};
-
-},{"../support":72,"../utils":74,"./ArrayReader":59,"./NodeBufferReader":61,"./StringReader":62,"./Uint8ArrayReader":63}],65:[function(_dereq_,module,exports){
-'use strict';
-exports.LOCAL_FILE_HEADER = "PK\x03\x04";
-exports.CENTRAL_FILE_HEADER = "PK\x01\x02";
-exports.CENTRAL_DIRECTORY_END = "PK\x05\x06";
-exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
-exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
-exports.DATA_DESCRIPTOR = "PK\x07\x08";
-
-},{}],66:[function(_dereq_,module,exports){
-'use strict';
-
-var GenericWorker = _dereq_('./GenericWorker');
-var utils = _dereq_('../utils');
-
-/**
- * A worker which convert chunks to a specified type.
- * @constructor
- * @param {String} destType the destination type.
- */
-function ConvertWorker(destType) {
-    GenericWorker.call(this, "ConvertWorker to " + destType);
-    this.destType = destType;
-}
-utils.inherits(ConvertWorker, GenericWorker);
-
-/**
- * @see GenericWorker.processChunk
- */
-ConvertWorker.prototype.processChunk = function (chunk) {
-    this.push({
-        data : utils.transformTo(this.destType, chunk.data),
-        meta : chunk.meta
-    });
-};
-module.exports = ConvertWorker;
-
-},{"../utils":74,"./GenericWorker":70}],67:[function(_dereq_,module,exports){
-'use strict';
-
-var GenericWorker = _dereq_('./GenericWorker');
-var crc32 = _dereq_('../crc32');
-var utils = _dereq_('../utils');
-
-/**
- * A worker which calculate the crc32 of the data flowing through.
- * @constructor
- */
-function Crc32Probe() {
-    GenericWorker.call(this, "Crc32Probe");
-    this.withStreamInfo("crc32", 0);
-}
-utils.inherits(Crc32Probe, GenericWorker);
-
-/**
- * @see GenericWorker.processChunk
- */
-Crc32Probe.prototype.processChunk = function (chunk) {
-    this.streamInfo.crc32 = crc32(chunk.data, this.streamInfo.crc32 || 0);
-    this.push(chunk);
-};
-module.exports = Crc32Probe;
-
-},{"../crc32":46,"../utils":74,"./GenericWorker":70}],68:[function(_dereq_,module,exports){
-'use strict';
-
-var utils = _dereq_('../utils');
-var GenericWorker = _dereq_('./GenericWorker');
-
-/**
- * A worker which calculate the total length of the data flowing through.
- * @constructor
- * @param {String} propName the name used to expose the length
- */
-function DataLengthProbe(propName) {
-    GenericWorker.call(this, "DataLengthProbe for " + propName);
-    this.propName = propName;
-    this.withStreamInfo(propName, 0);
-}
-utils.inherits(DataLengthProbe, GenericWorker);
-
-/**
- * @see GenericWorker.processChunk
- */
-DataLengthProbe.prototype.processChunk = function (chunk) {
-    if(chunk) {
-        var length = this.streamInfo[this.propName] || 0;
-        this.streamInfo[this.propName] = length + chunk.data.length;
-    }
-    GenericWorker.prototype.processChunk.call(this, chunk);
-};
-module.exports = DataLengthProbe;
-
-
-},{"../utils":74,"./GenericWorker":70}],69:[function(_dereq_,module,exports){
-'use strict';
-
-var utils = _dereq_('../utils');
-var GenericWorker = _dereq_('./GenericWorker');
-
-// the size of the generated chunks
-// TODO expose this as a public variable
-var DEFAULT_BLOCK_SIZE = 16 * 1024;
-
-/**
- * A worker that reads a content and emits chunks.
- * @constructor
- * @param {Promise} dataP the promise of the data to split
- */
-function DataWorker(dataP) {
-    GenericWorker.call(this, "DataWorker");
-    var self = this;
-    this.dataIsReady = false;
-    this.index = 0;
-    this.max = 0;
-    this.data = null;
-    this.type = "";
-
-    this._tickScheduled = false;
-
-    dataP.then(function (data) {
-        self.dataIsReady = true;
-        self.data = data;
-        self.max = data && data.length || 0;
-        self.type = utils.getTypeOf(data);
-        if(!self.isPaused) {
-            self._tickAndRepeat();
-        }
-    }, function (e) {
-        self.error(e);
-    });
-}
-
-utils.inherits(DataWorker, GenericWorker);
-
-/**
- * @see GenericWorker.cleanUp
- */
-DataWorker.prototype.cleanUp = function () {
-    GenericWorker.prototype.cleanUp.call(this);
-    this.data = null;
-};
-
-/**
- * @see GenericWorker.resume
- */
-DataWorker.prototype.resume = function () {
-    if(!GenericWorker.prototype.resume.call(this)) {
-        return false;
-    }
-
-    if (!this._tickScheduled && this.dataIsReady) {
-        this._tickScheduled = true;
-        utils.delay(this._tickAndRepeat, [], this);
-    }
-    return true;
-};
-
-/**
- * Trigger a tick a schedule an other call to this function.
- */
-DataWorker.prototype._tickAndRepeat = function() {
-    this._tickScheduled = false;
-    if(this.isPaused || this.isFinished) {
-        return;
-    }
-    this._tick();
-    if(!this.isFinished) {
-        utils.delay(this._tickAndRepeat, [], this);
-        this._tickScheduled = true;
-    }
-};
-
-/**
- * Read and push a chunk.
- */
-DataWorker.prototype._tick = function() {
-
-    if(this.isPaused || this.isFinished) {
-        return false;
-    }
-
-    var size = DEFAULT_BLOCK_SIZE;
-    var data = null, nextIndex = Math.min(this.max, this.index + size);
-    if (this.index >= this.max) {
-        // EOF
-        return this.end();
-    } else {
-        switch(this.type) {
-            case "string":
-                data = this.data.substring(this.index, nextIndex);
-            break;
-            case "uint8array":
-                data = this.data.subarray(this.index, nextIndex);
-            break;
-            case "array":
-            case "nodebuffer":
-                data = this.data.slice(this.index, nextIndex);
-            break;
-        }
-        this.index = nextIndex;
-        return this.push({
-            data : data,
-            meta : {
-                percent : this.max ? this.index / this.max * 100 : 0
-            }
-        });
-    }
-};
-
-module.exports = DataWorker;
-
-},{"../utils":74,"./GenericWorker":70}],70:[function(_dereq_,module,exports){
-'use strict';
-
-/**
- * A worker that does nothing but passing chunks to the next one. This is like
- * a nodejs stream but with some differences. On the good side :
- * - it works on IE 6-9 without any issue / polyfill
- * - it weights less than the full dependencies bundled with browserify
- * - it forwards errors (no need to declare an error handler EVERYWHERE)
- *
- * A chunk is an object with 2 attributes : `meta` and `data`. The former is an
- * object containing anything (`percent` for example), see each worker for more
- * details. The latter is the real data (String, Uint8Array, etc).
- *
- * @constructor
- * @param {String} name the name of the stream (mainly used for debugging purposes)
- */
-function GenericWorker(name) {
-    // the name of the worker
-    this.name = name || "default";
-    // an object containing metadata about the workers chain
-    this.streamInfo = {};
-    // an error which happened when the worker was paused
-    this.generatedError = null;
-    // an object containing metadata to be merged by this worker into the general metadata
-    this.extraStreamInfo = {};
-    // true if the stream is paused (and should not do anything), false otherwise
-    this.isPaused = true;
-    // true if the stream is finished (and should not do anything), false otherwise
-    this.isFinished = false;
-    // true if the stream is locked to prevent further structure updates (pipe), false otherwise
-    this.isLocked = false;
-    // the event listeners
-    this._listeners = {
-        'data':[],
-        'end':[],
-        'error':[]
-    };
-    // the previous worker, if any
-    this.previous = null;
-}
-
-GenericWorker.prototype = {
-    /**
-     * Push a chunk to the next workers.
-     * @param {Object} chunk the chunk to push
-     */
-    push : function (chunk) {
-        this.emit("data", chunk);
-    },
-    /**
-     * End the stream.
-     * @return {Boolean} true if this call ended the worker, false otherwise.
-     */
-    end : function () {
-        if (this.isFinished) {
-            return false;
-        }
-
-        this.flush();
-        try {
-            this.emit("end");
-            this.cleanUp();
-            this.isFinished = true;
-        } catch (e) {
-            this.emit("error", e);
-        }
-        return true;
-    },
-    /**
-     * End the stream with an error.
-     * @param {Error} e the error which caused the premature end.
-     * @return {Boolean} true if this call ended the worker with an error, false otherwise.
-     */
-    error : function (e) {
-        if (this.isFinished) {
-            return false;
-        }
-
-        if(this.isPaused) {
-            this.generatedError = e;
-        } else {
-            this.isFinished = true;
-
-            this.emit("error", e);
-
-            // in the workers chain exploded in the middle of the chain,
-            // the error event will go downward but we also need to notify
-            // workers upward that there has been an error.
-            if(this.previous) {
-                this.previous.error(e);
-            }
-
-            this.cleanUp();
-        }
-        return true;
-    },
-    /**
-     * Add a callback on an event.
-     * @param {String} name the name of the event (data, end, error)
-     * @param {Function} listener the function to call when the event is triggered
-     * @return {GenericWorker} the current object for chainability
-     */
-    on : function (name, listener) {
-        this._listeners[name].push(listener);
-        return this;
-    },
-    /**
-     * Clean any references when a worker is ending.
-     */
-    cleanUp : function () {
-        this.streamInfo = this.generatedError = this.extraStreamInfo = null;
-        this._listeners = [];
-    },
-    /**
-     * Trigger an event. This will call registered callback with the provided arg.
-     * @param {String} name the name of the event (data, end, error)
-     * @param {Object} arg the argument to call the callback with.
-     */
-    emit : function (name, arg) {
-        if (this._listeners[name]) {
-            for(var i = 0; i < this._listeners[name].length; i++) {
-                this._listeners[name][i].call(this, arg);
-            }
-        }
-    },
-    /**
-     * Chain a worker with an other.
-     * @param {Worker} next the worker receiving events from the current one.
-     * @return {worker} the next worker for chainability
-     */
-    pipe : function (next) {
-        return next.registerPrevious(this);
-    },
-    /**
-     * Same as `pipe` in the other direction.
-     * Using an API with `pipe(next)` is very easy.
-     * Implementing the API with the point of view of the next one registering
-     * a source is easier, see the ZipFileWorker.
-     * @param {Worker} previous the previous worker, sending events to this one
-     * @return {Worker} the current worker for chainability
-     */
-    registerPrevious : function (previous) {
-        if (this.isLocked) {
-            throw new Error("The stream '" + this + "' has already been used.");
-        }
-
-        // sharing the streamInfo...
-        this.streamInfo = previous.streamInfo;
-        // ... and adding our own bits
-        this.mergeStreamInfo();
-        this.previous =  previous;
-        var self = this;
-        previous.on('data', function (chunk) {
-            self.processChunk(chunk);
-        });
-        previous.on('end', function () {
-            self.end();
-        });
-        previous.on('error', function (e) {
-            self.error(e);
-        });
-        return this;
-    },
-    /**
-     * Pause the stream so it doesn't send events anymore.
-     * @return {Boolean} true if this call paused the worker, false otherwise.
-     */
-    pause : function () {
-        if(this.isPaused || this.isFinished) {
-            return false;
-        }
-        this.isPaused = true;
-
-        if(this.previous) {
-            this.previous.pause();
-        }
-        return true;
-    },
-    /**
-     * Resume a paused stream.
-     * @return {Boolean} true if this call resumed the worker, false otherwise.
-     */
-    resume : function () {
-        if(!this.isPaused || this.isFinished) {
-            return false;
-        }
-        this.isPaused = false;
-
-        // if true, the worker tried to resume but failed
-        var withError = false;
-        if(this.generatedError) {
-            this.error(this.generatedError);
-            withError = true;
-        }
-        if(this.previous) {
-            this.previous.resume();
-        }
-
-        return !withError;
-    },
-    /**
-     * Flush any remaining bytes as the stream is ending.
-     */
-    flush : function () {},
-    /**
-     * Process a chunk. This is usually the method overridden.
-     * @param {Object} chunk the chunk to process.
-     */
-    processChunk : function(chunk) {
-        this.push(chunk);
-    },
-    /**
-     * Add a key/value to be added in the workers chain streamInfo once activated.
-     * @param {String} key the key to use
-     * @param {Object} value the associated value
-     * @return {Worker} the current worker for chainability
-     */
-    withStreamInfo : function (key, value) {
-        this.extraStreamInfo[key] = value;
-        this.mergeStreamInfo();
-        return this;
-    },
-    /**
-     * Merge this worker's streamInfo into the chain's streamInfo.
-     */
-    mergeStreamInfo : function () {
-        for(var key in this.extraStreamInfo) {
-            if (!this.extraStreamInfo.hasOwnProperty(key)) {
-                continue;
-            }
-            this.streamInfo[key] = this.extraStreamInfo[key];
-        }
-    },
-
-    /**
-     * Lock the stream to prevent further updates on the workers chain.
-     * After calling this method, all calls to pipe will fail.
-     */
-    lock: function () {
-        if (this.isLocked) {
-            throw new Error("The stream '" + this + "' has already been used.");
-        }
-        this.isLocked = true;
-        if (this.previous) {
-            this.previous.lock();
-        }
-    },
-
-    /**
-     *
-     * Pretty print the workers chain.
-     */
-    toString : function () {
-        var me = "Worker " + this.name;
-        if (this.previous) {
-            return this.previous + " -> " + me;
-        } else {
-            return me;
-        }
-    }
-};
-
-module.exports = GenericWorker;
-
-},{}],71:[function(_dereq_,module,exports){
-(function (Buffer){
-'use strict';
-
-var utils = _dereq_('../utils');
-var ConvertWorker = _dereq_('./ConvertWorker');
-var GenericWorker = _dereq_('./GenericWorker');
-var base64 = _dereq_('../base64');
-var support = _dereq_("../support");
-var external = _dereq_("../external");
-
-var NodejsStreamOutputAdapter = null;
-if (support.nodestream) {
-    try {
-        NodejsStreamOutputAdapter = _dereq_('../nodejs/NodejsStreamOutputAdapter');
-    } catch(e) {}
-}
-
-/**
- * Apply the final transformation of the data. If the user wants a Blob for
- * example, it's easier to work with an U8intArray and finally do the
- * ArrayBuffer/Blob conversion.
- * @param {String} type the name of the final type
- * @param {String|Uint8Array|Buffer} content the content to transform
- * @param {String} mimeType the mime type of the content, if applicable.
- * @return {String|Uint8Array|ArrayBuffer|Buffer|Blob} the content in the right format.
- */
-function transformZipOutput(type, content, mimeType) {
-    switch(type) {
-        case "blob" :
-            return utils.newBlob(utils.transformTo("arraybuffer", content), mimeType);
-        case "base64" :
-            return base64.encode(content);
-        default :
-            return utils.transformTo(type, content);
-    }
-}
-
-/**
- * Concatenate an array of data of the given type.
- * @param {String} type the type of the data in the given array.
- * @param {Array} dataArray the array containing the data chunks to concatenate
- * @return {String|Uint8Array|Buffer} the concatenated data
- * @throws Error if the asked type is unsupported
- */
-function concat (type, dataArray) {
-    var i, index = 0, res = null, totalLength = 0;
-    for(i = 0; i < dataArray.length; i++) {
-        totalLength += dataArray[i].length;
-    }
-    switch(type) {
-        case "string":
-            return dataArray.join("");
-          case "array":
-            return Array.prototype.concat.apply([], dataArray);
-        case "uint8array":
-            res = new Uint8Array(totalLength);
-            for(i = 0; i < dataArray.length; i++) {
-                res.set(dataArray[i], index);
-                index += dataArray[i].length;
-            }
-            return res;
-        case "nodebuffer":
-            return Buffer.concat(dataArray);
-        default:
-            throw new Error("concat : unsupported type '"  + type + "'");
-    }
-}
-
-/**
- * Listen a StreamHelper, accumulate its content and concatenate it into a
- * complete block.
- * @param {StreamHelper} helper the helper to use.
- * @param {Function} updateCallback a callback called on each update. Called
- * with one arg :
- * - the metadata linked to the update received.
- * @return Promise the promise for the accumulation.
- */
-function accumulate(helper, updateCallback) {
-    return new external.Promise(function (resolve, reject){
-        var dataArray = [];
-        var chunkType = helper._internalType,
-            resultType = helper._outputType,
-            mimeType = helper._mimeType;
-        helper
-        .on('data', function (data, meta) {
-            dataArray.push(data);
-            if(updateCallback) {
-                updateCallback(meta);
-            }
-        })
-        .on('error', function(err) {
-            dataArray = [];
-            reject(err);
-        })
-        .on('end', function (){
-            try {
-                var result = transformZipOutput(resultType, concat(chunkType, dataArray), mimeType);
-                resolve(result);
-            } catch (e) {
-                reject(e);
-            }
-            dataArray = [];
-        })
-        .resume();
-    });
-}
-
-/**
- * An helper to easily use workers outside of JSZip.
- * @constructor
- * @param {Worker} worker the worker to wrap
- * @param {String} outputType the type of data expected by the use
- * @param {String} mimeType the mime type of the content, if applicable.
- */
-function StreamHelper(worker, outputType, mimeType) {
-    var internalType = outputType;
-    switch(outputType) {
-        case "blob":
-        case "arraybuffer":
-            internalType = "uint8array";
-        break;
-        case "base64":
-            internalType = "string";
-        break;
-    }
-
-    try {
-        // the type used internally
-        this._internalType = internalType;
-        // the type used to output results
-        this._outputType = outputType;
-        // the mime type
-        this._mimeType = mimeType;
-        utils.checkSupport(internalType);
-        this._worker = worker.pipe(new ConvertWorker(internalType));
-        // the last workers can be rewired without issues but we need to
-        // prevent any updates on previous workers.
-        worker.lock();
-    } catch(e) {
-        this._worker = new GenericWorker("error");
-        this._worker.error(e);
-    }
-}
-
-StreamHelper.prototype = {
-    /**
-     * Listen a StreamHelper, accumulate its content and concatenate it into a
-     * complete block.
-     * @param {Function} updateCb the update callback.
-     * @return Promise the promise for the accumulation.
-     */
-    accumulate : function (updateCb) {
-        return accumulate(this, updateCb);
-    },
-    /**
-     * Add a listener on an event triggered on a stream.
-     * @param {String} evt the name of the event
-     * @param {Function} fn the listener
-     * @return {StreamHelper} the current helper.
-     */
-    on : function (evt, fn) {
-        var self = this;
-
-        if(evt === "data") {
-            this._worker.on(evt, function (chunk) {
-                fn.call(self, chunk.data, chunk.meta);
-            });
-        } else {
-            this._worker.on(evt, function () {
-                utils.delay(fn, arguments, self);
-            });
-        }
-        return this;
-    },
-    /**
-     * Resume the flow of chunks.
-     * @return {StreamHelper} the current helper.
-     */
-    resume : function () {
-        utils.delay(this._worker.resume, [], this._worker);
-        return this;
-    },
-    /**
-     * Pause the flow of chunks.
-     * @return {StreamHelper} the current helper.
-     */
-    pause : function () {
-        this._worker.pause();
-        return this;
-    },
-    /**
-     * Return a nodejs stream for this helper.
-     * @param {Function} updateCb the update callback.
-     * @return {NodejsStreamOutputAdapter} the nodejs stream.
-     */
-    toNodejsStream : function (updateCb) {
-        utils.checkSupport("nodestream");
-        if (this._outputType !== "nodebuffer") {
-            // an object stream containing blob/arraybuffer/uint8array/string
-            // is strange and I don't know if it would be useful.
-            // I you find this comment and have a good usecase, please open a
-            // bug report !
-            throw new Error(this._outputType + " is not supported by this method");
-        }
-
-        return new NodejsStreamOutputAdapter(this, {
-            objectMode : this._outputType !== "nodebuffer"
-        }, updateCb);
-    }
-};
-
-
-module.exports = StreamHelper;
-
-}).call(this,_dereq_("buffer").Buffer)
-
-},{"../base64":43,"../external":48,"../nodejs/NodejsStreamOutputAdapter":55,"../support":72,"../utils":74,"./ConvertWorker":66,"./GenericWorker":70,"buffer":12}],72:[function(_dereq_,module,exports){
-(function (Buffer){
-'use strict';
-
-exports.base64 = true;
-exports.array = true;
-exports.string = true;
-exports.arraybuffer = typeof ArrayBuffer !== "undefined" && typeof Uint8Array !== "undefined";
-exports.nodebuffer = typeof Buffer !== "undefined";
-// contains true if JSZip can read/generate Uint8Array, false otherwise.
-exports.uint8array = typeof Uint8Array !== "undefined";
-
-if (typeof ArrayBuffer === "undefined") {
-    exports.blob = false;
-}
-else {
-    var buffer = new ArrayBuffer(0);
-    try {
-        exports.blob = new Blob([buffer], {
-            type: "application/zip"
-        }).size === 0;
-    }
-    catch (e) {
-        try {
-            var Builder = self.BlobBuilder || self.WebKitBlobBuilder || self.MozBlobBuilder || self.MSBlobBuilder;
-            var builder = new Builder();
-            builder.append(buffer);
-            exports.blob = builder.getBlob('application/zip').size === 0;
-        }
-        catch (e) {
-            exports.blob = false;
-        }
-    }
-}
-
+// import zWorkerCode from './z-worker';
+// import zWorkerCode from 'raw!./z-worker';
+var workerRawString = require('./z-worker');
+
+var zWorker = URL.createObjectURL(new Blob([workerRawString], {
+  type: 'text/javascript'
+}));
+
+var ERR_BAD_FORMAT = 'File format is not recognized.';
+var ERR_CRC = 'CRC failed.';
+var ERR_ENCRYPTED = 'File contains encrypted entry.';
+var ERR_ZIP64 = 'File is using Zip64 (4gb+ file size).';
+var ERR_READ = 'Error while reading zip file.';
+var ERR_WRITE = 'Error while writing zip file.';
+var ERR_WRITE_DATA = 'Error while writing file data.';
+var ERR_READ_DATA = 'Error while reading file data.';
+var ERR_DUPLICATED_NAME = 'File already exists.';
+var CHUNK_SIZE = 512 * 1024;
+
+var TEXT_PLAIN = 'text/plain';
+
+var appendABViewSupported;
 try {
-    exports.nodestream = !!_dereq_('readable-stream').Readable;
-} catch(e) {
-    exports.nodestream = false;
+  appendABViewSupported = new Blob([new DataView(new ArrayBuffer(0))]).size === 0;
+} catch (err) {
+  appendABViewSupported = undefined;
 }
 
-}).call(this,_dereq_("buffer").Buffer)
+var zip = {};
 
-},{"buffer":12,"readable-stream":58}],73:[function(_dereq_,module,exports){
-'use strict';
+////////////
 
-var utils = _dereq_('./utils');
-var support = _dereq_('./support');
-var nodejsUtils = _dereq_('./nodejsUtils');
-var GenericWorker = _dereq_('./stream/GenericWorker');
-
-/**
- * The following functions come from pako, from pako/lib/utils/strings
- * released under the MIT license, see pako https://github.com/nodeca/pako/
- */
-
-// Table with utf8 lengths (calculated by first byte of sequence)
-// Note, that 5 & 6-byte values and some 4-byte values can not be represented in JS,
-// because max possible codepoint is 0x10ffff
-var _utf8len = new Array(256);
-for (var i=0; i<256; i++) {
-  _utf8len[i] = (i >= 252 ? 6 : i >= 248 ? 5 : i >= 240 ? 4 : i >= 224 ? 3 : i >= 192 ? 2 : 1);
+function Crc32() {
+  this.crc = -1;
 }
-_utf8len[254]=_utf8len[254]=1; // Invalid sequence start
 
-// convert string to array (typed, when possible)
-var string2buf = function (str) {
-    var buf, c, c2, m_pos, i, str_len = str.length, buf_len = 0;
-
-    // count binary size
-    for (m_pos = 0; m_pos < str_len; m_pos++) {
-        c = str.charCodeAt(m_pos);
-        if ((c & 0xfc00) === 0xd800 && (m_pos+1 < str_len)) {
-            c2 = str.charCodeAt(m_pos+1);
-            if ((c2 & 0xfc00) === 0xdc00) {
-                c = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
-                m_pos++;
-            }
-        }
-        buf_len += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
-    }
-
-    // allocate buffer
-    if (support.uint8array) {
-        buf = new Uint8Array(buf_len);
-    } else {
-        buf = new Array(buf_len);
-    }
-
-    // convert
-    for (i=0, m_pos = 0; i < buf_len; m_pos++) {
-        c = str.charCodeAt(m_pos);
-        if ((c & 0xfc00) === 0xd800 && (m_pos+1 < str_len)) {
-            c2 = str.charCodeAt(m_pos+1);
-            if ((c2 & 0xfc00) === 0xdc00) {
-                c = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
-                m_pos++;
-            }
-        }
-        if (c < 0x80) {
-            /* one byte */
-            buf[i++] = c;
-        } else if (c < 0x800) {
-            /* two bytes */
-            buf[i++] = 0xC0 | (c >>> 6);
-            buf[i++] = 0x80 | (c & 0x3f);
-        } else if (c < 0x10000) {
-            /* three bytes */
-            buf[i++] = 0xE0 | (c >>> 12);
-            buf[i++] = 0x80 | (c >>> 6 & 0x3f);
-            buf[i++] = 0x80 | (c & 0x3f);
-        } else {
-            /* four bytes */
-            buf[i++] = 0xf0 | (c >>> 18);
-            buf[i++] = 0x80 | (c >>> 12 & 0x3f);
-            buf[i++] = 0x80 | (c >>> 6 & 0x3f);
-            buf[i++] = 0x80 | (c & 0x3f);
-        }
-    }
-
-    return buf;
+Crc32.prototype.append = function append(data) {
+  var crc = this.crc | 0, table = this.table;
+  for (var offset = 0, len = data.length | 0; offset < len; offset++)
+    crc = (crc >>> 8) ^ table[(crc ^ data[offset]) & 0xFF];
+  this.crc = crc;
 };
-
-// Calculate max possible position in utf8 buffer,
-// that will not break sequence. If that's not possible
-// - (very small limits) return max size as is.
-//
-// buf[] - utf8 bytes array
-// max   - length limit (mandatory);
-var utf8border = function(buf, max) {
-    var pos;
-
-    max = max || buf.length;
-    if (max > buf.length) { max = buf.length; }
-
-    // go back from last position, until start of sequence found
-    pos = max-1;
-    while (pos >= 0 && (buf[pos] & 0xC0) === 0x80) { pos--; }
-
-    // Fuckup - very small and broken sequence,
-    // return max, because we should return something anyway.
-    if (pos < 0) { return max; }
-
-    // If we came to start of buffer - that means vuffer is too small,
-    // return max too.
-    if (pos === 0) { return max; }
-
-    return (pos + _utf8len[buf[pos]] > max) ? pos : max;
+Crc32.prototype.get = function get() {
+  return ~this.crc;
 };
+Crc32.prototype.table = (function() {
+  var i, j, t, table = []; // Uint32Array is actually slower than []
+  for (i = 0; i < 256; i++) {
+    t = i;
+    for (j = 0; j < 8; j++)
+      if (t & 1)
+        t = (t >>> 1) ^ 0xEDB88320;
+      else
+        t = t >>> 1;
+    table[i] = t;
+  }
+  return table;
+})();
 
-// convert array to string
-var buf2string = function (buf) {
-    var str, i, out, c, c_len;
-    var len = buf.length;
-
-    // Reserve max possible length (2 words per char)
-    // NB: by unknown reasons, Array is significantly faster for
-    //     String.fromCharCode.apply than Uint16Array.
-    var utf16buf = new Array(len*2);
-
-    for (out=0, i=0; i<len;) {
-        c = buf[i++];
-        // quick process ascii
-        if (c < 0x80) { utf16buf[out++] = c; continue; }
-
-        c_len = _utf8len[c];
-        // skip 5 & 6 byte codes
-        if (c_len > 4) { utf16buf[out++] = 0xfffd; i += c_len-1; continue; }
-
-        // apply mask on first byte
-        c &= c_len === 2 ? 0x1f : c_len === 3 ? 0x0f : 0x07;
-        // join the rest
-        while (c_len > 1 && i < len) {
-            c = (c << 6) | (buf[i++] & 0x3f);
-            c_len--;
-        }
-
-        // terminated by end of string?
-        if (c_len > 1) { utf16buf[out++] = 0xfffd; continue; }
-
-        if (c < 0x10000) {
-            utf16buf[out++] = c;
-        } else {
-            c -= 0x10000;
-            utf16buf[out++] = 0xd800 | ((c >> 10) & 0x3ff);
-            utf16buf[out++] = 0xdc00 | (c & 0x3ff);
-        }
-    }
-
-    // shrinkBuf(utf16buf, out)
-    if (utf16buf.length !== out) {
-        if(utf16buf.subarray) {
-            utf16buf = utf16buf.subarray(0, out);
-        } else {
-            utf16buf.length = out;
-        }
-    }
-
-    // return String.fromCharCode.apply(null, utf16buf);
-    return utils.applyFromCharCode(utf16buf);
-};
-
-
-// That's all for the pako functions.
-
-
-/**
- * Transform a javascript string into an array (typed if possible) of bytes,
- * UTF-8 encoded.
- * @param {String} str the string to encode
- * @return {Array|Uint8Array|Buffer} the UTF-8 encoded string.
- */
-exports.utf8encode = function utf8encode(str) {
-    if (support.nodebuffer) {
-        return nodejsUtils.newBufferFrom(str, "utf-8");
-    }
-
-    return string2buf(str);
-};
-
-
-/**
- * Transform a bytes array (or a representation) representing an UTF-8 encoded
- * string into a javascript string.
- * @param {Array|Uint8Array|Buffer} buf the data de decode
- * @return {String} the decoded string.
- */
-exports.utf8decode = function utf8decode(buf) {
-    if (support.nodebuffer) {
-        return utils.transformTo("nodebuffer", buf).toString("utf-8");
-    }
-
-    buf = utils.transformTo(support.uint8array ? "uint8array" : "array", buf);
-
-    return buf2string(buf);
-};
-
-/**
- * A worker to decode utf8 encoded binary chunks into string chunks.
- * @constructor
- */
-function Utf8DecodeWorker() {
-    GenericWorker.call(this, "utf-8 decode");
-    // the last bytes if a chunk didn't end with a complete codepoint.
-    this.leftOver = null;
+// "no-op" codec
+function NOOP() {
 }
-utils.inherits(Utf8DecodeWorker, GenericWorker);
 
-/**
- * @see GenericWorker.processChunk
- */
-Utf8DecodeWorker.prototype.processChunk = function (chunk) {
+NOOP.prototype.append = function append(bytes, onprogress) {
+  return bytes;
+};
+NOOP.prototype.flush = function flush() {
+};
 
-    var data = utils.transformTo(support.uint8array ? "uint8array" : "array", chunk.data);
+function blobSlice(blob, index, length) {
+  if (index < 0 || length < 0 || index + length > blob.size)
+    throw new RangeError('offset:' + index + ', length:' + length + ', size:' + blob.size);
+  if (blob.slice)
+    return blob.slice(index, index + length);
+  else if (blob.webkitSlice)
+    return blob.webkitSlice(index, index + length);
+  else if (blob.mozSlice)
+    return blob.mozSlice(index, index + length);
+  else if (blob.msSlice)
+    return blob.msSlice(index, index + length);
+}
 
-    // 1st step, re-use what's left of the previous chunk
-    if (this.leftOver && this.leftOver.length) {
-        if(support.uint8array) {
-            var previousData = data;
-            data = new Uint8Array(previousData.length + this.leftOver.length);
-            data.set(this.leftOver, 0);
-            data.set(previousData, this.leftOver.length);
-        } else {
-            data = this.leftOver.concat(data);
-        }
-        this.leftOver = null;
-    }
+function getDataHelper(byteLength, bytes) {
+  var dataBuffer, dataArray;
+  dataBuffer = new ArrayBuffer(byteLength);
+  dataArray = new Uint8Array(dataBuffer);
+  if (bytes)
+    dataArray.set(bytes, 0);
+  return {
+    buffer: dataBuffer,
+    array: dataArray,
+    view: new DataView(dataBuffer)
+  };
+}
 
-    var nextBoundary = utf8border(data);
-    var usableData = data;
-    if (nextBoundary !== data.length) {
-        if (support.uint8array) {
-            usableData = data.subarray(0, nextBoundary);
-            this.leftOver = data.subarray(nextBoundary, data.length);
-        } else {
-            usableData = data.slice(0, nextBoundary);
-            this.leftOver = data.slice(nextBoundary, data.length);
-        }
-    }
+// Readers
+function Reader() {
+}
 
-    this.push({
-        data : exports.utf8decode(usableData),
-        meta : chunk.meta
+function TextReader(text) {
+  var that = this, blobReader;
+
+  function init(callback, onerror) {
+    var blob = new Blob([text], {
+      type: TEXT_PLAIN
     });
-};
+    blobReader = new BlobReader(blob);
+    blobReader.init(function() {
+      that.size = blobReader.size;
+      callback();
+    }, onerror);
+  }
 
-/**
- * @see GenericWorker.flush
- */
-Utf8DecodeWorker.prototype.flush = function () {
-    if(this.leftOver && this.leftOver.length) {
-        this.push({
-            data : exports.utf8decode(this.leftOver),
-            meta : {}
-        });
-        this.leftOver = null;
-    }
-};
-exports.Utf8DecodeWorker = Utf8DecodeWorker;
+  function readUint8Array(index, length, callback, onerror) {
+    blobReader.readUint8Array(index, length, callback, onerror);
+  }
 
-/**
- * A worker to endcode string chunks into utf8 encoded binary chunks.
- * @constructor
- */
-function Utf8EncodeWorker() {
-    GenericWorker.call(this, "utf-8 encode");
-}
-utils.inherits(Utf8EncodeWorker, GenericWorker);
-
-/**
- * @see GenericWorker.processChunk
- */
-Utf8EncodeWorker.prototype.processChunk = function (chunk) {
-    this.push({
-        data : exports.utf8encode(chunk.data),
-        meta : chunk.meta
-    });
-};
-exports.Utf8EncodeWorker = Utf8EncodeWorker;
-
-},{"./nodejsUtils":56,"./stream/GenericWorker":70,"./support":72,"./utils":74}],74:[function(_dereq_,module,exports){
-'use strict';
-
-var support = _dereq_('./support');
-var base64 = _dereq_('./base64');
-var nodejsUtils = _dereq_('./nodejsUtils');
-var setImmediate = _dereq_('core-js/library/fn/set-immediate');
-var external = _dereq_("./external");
-
-
-/**
- * Convert a string that pass as a "binary string": it should represent a byte
- * array but may have > 255 char codes. Be sure to take only the first byte
- * and returns the byte array.
- * @param {String} str the string to transform.
- * @return {Array|Uint8Array} the string in a binary format.
- */
-function string2binary(str) {
-    var result = null;
-    if (support.uint8array) {
-      result = new Uint8Array(str.length);
-    } else {
-      result = new Array(str.length);
-    }
-    return stringToArrayLike(str, result);
+  that.size = 0;
+  that.init = init;
+  that.readUint8Array = readUint8Array;
 }
 
-/**
- * Create a new blob with the given content and the given type.
- * @param {String|ArrayBuffer} part the content to put in the blob. DO NOT use
- * an Uint8Array because the stock browser of android 4 won't accept it (it
- * will be silently converted to a string, "[object Uint8Array]").
- *
- * Use only ONE part to build the blob to avoid a memory leak in IE11 / Edge:
- * when a large amount of Array is used to create the Blob, the amount of
- * memory consumed is nearly 100 times the original data amount.
- *
- * @param {String} type the mime type of the blob.
- * @return {Blob} the created blob.
- */
-exports.newBlob = function(part, type) {
-    exports.checkSupport("blob");
+TextReader.prototype = new Reader();
+TextReader.prototype.constructor = TextReader;
 
-    try {
-        // Blob constructor
-        return new Blob([part], {
-            type: type
-        });
-    }
-    catch (e) {
+function Data64URIReader(dataURI) {
+  var that = this, dataStart;
 
-        try {
-            // deprecated, browser only, old way
-            var Builder = self.BlobBuilder || self.WebKitBlobBuilder || self.MozBlobBuilder || self.MSBlobBuilder;
-            var builder = new Builder();
-            builder.append(part);
-            return builder.getBlob(type);
-        }
-        catch (e) {
+  function init(callback) {
+    var dataEnd = dataURI.length;
+    while (dataURI.charAt(dataEnd - 1) == "=")
+      dataEnd--;
+    dataStart = dataURI.indexOf(",") + 1;
+    that.size = Math.floor((dataEnd - dataStart) * 0.75);
+    callback();
+  }
 
-            // well, fuck ?!
-            throw new Error("Bug : can't construct the Blob.");
-        }
-    }
+  function readUint8Array(index, length, callback) {
+    var i, data = getDataHelper(length);
+    var start = Math.floor(index / 3) * 4;
+    var end = Math.ceil((index + length) / 3) * 4;
+    var bytes = atob(dataURI.substring(start + dataStart, end + dataStart));
+    var delta = index - Math.floor(start / 4) * 3;
+    for (i = delta; i < delta + length; i++)
+      data.array[i - delta] = bytes.charCodeAt(i);
+    callback(data.array);
+  }
 
-
-};
-/**
- * The identity function.
- * @param {Object} input the input.
- * @return {Object} the same input.
- */
-function identity(input) {
-    return input;
+  that.size = 0;
+  that.init = init;
+  that.readUint8Array = readUint8Array;
 }
 
-/**
- * Fill in an array with a string.
- * @param {String} str the string to use.
- * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to fill in (will be mutated).
- * @return {Array|ArrayBuffer|Uint8Array|Buffer} the updated array.
- */
-function stringToArrayLike(str, array) {
-    for (var i = 0; i < str.length; ++i) {
-        array[i] = str.charCodeAt(i) & 0xFF;
-    }
-    return array;
-}
-
-/**
- * An helper for the function arrayLikeToString.
- * This contains static informations and functions that
- * can be optimized by the browser JIT compiler.
- */
-var arrayToStringHelper = {
-    /**
-     * Transform an array of int into a string, chunk by chunk.
-     * See the performances notes on arrayLikeToString.
-     * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
-     * @param {String} type the type of the array.
-     * @param {Integer} chunk the chunk size.
-     * @return {String} the resulting string.
-     * @throws Error if the chunk is too big for the stack.
-     */
-    stringifyByChunk: function(array, type, chunk) {
-        var result = [], k = 0, len = array.length;
-        // shortcut
-        if (len <= chunk) {
-            return String.fromCharCode.apply(null, array);
-        }
-        while (k < len) {
-            if (type === "array" || type === "nodebuffer") {
-                result.push(String.fromCharCode.apply(null, array.slice(k, Math.min(k + chunk, len))));
-            }
-            else {
-                result.push(String.fromCharCode.apply(null, array.subarray(k, Math.min(k + chunk, len))));
-            }
-            k += chunk;
-        }
-        return result.join("");
-    },
-    /**
-     * Call String.fromCharCode on every item in the array.
-     * This is the naive implementation, which generate A LOT of intermediate string.
-     * This should be used when everything else fail.
-     * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
-     * @return {String} the result.
-     */
-    stringifyByChar: function(array){
-        var resultStr = "";
-        for(var i = 0; i < array.length; i++) {
-            resultStr += String.fromCharCode(array[i]);
-        }
-        return resultStr;
-    },
-    applyCanBeUsed : {
-        /**
-         * true if the browser accepts to use String.fromCharCode on Uint8Array
-         */
-        uint8array : (function () {
-            try {
-                return support.uint8array && String.fromCharCode.apply(null, new Uint8Array(1)).length === 1;
-            } catch (e) {
-                return false;
-            }
-        })(),
-        /**
-         * true if the browser accepts to use String.fromCharCode on nodejs Buffer.
-         */
-        nodebuffer : (function () {
-            try {
-                return support.nodebuffer && String.fromCharCode.apply(null, nodejsUtils.allocBuffer(1)).length === 1;
-            } catch (e) {
-                return false;
-            }
-        })()
-    }
-};
-
-/**
- * Transform an array-like object to a string.
- * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
- * @return {String} the result.
- */
-function arrayLikeToString(array) {
-    // Performances notes :
-    // --------------------
-    // String.fromCharCode.apply(null, array) is the fastest, see
-    // see http://jsperf.com/converting-a-uint8array-to-a-string/2
-    // but the stack is limited (and we can get huge arrays !).
-    //
-    // result += String.fromCharCode(array[i]); generate too many strings !
-    //
-    // This code is inspired by http://jsperf.com/arraybuffer-to-string-apply-performance/2
-    // TODO : we now have workers that split the work. Do we still need that ?
-    var chunk = 65536,
-        type = exports.getTypeOf(array),
-        canUseApply = true;
-    if (type === "uint8array") {
-        canUseApply = arrayToStringHelper.applyCanBeUsed.uint8array;
-    } else if (type === "nodebuffer") {
-        canUseApply = arrayToStringHelper.applyCanBeUsed.nodebuffer;
-    }
-
-    if (canUseApply) {
-        while (chunk > 1) {
-            try {
-                return arrayToStringHelper.stringifyByChunk(array, type, chunk);
-            } catch (e) {
-                chunk = Math.floor(chunk / 2);
-            }
-        }
-    }
-
-    // no apply or chunk error : slow and painful algorithm
-    // default browser on android 4.*
-    return arrayToStringHelper.stringifyByChar(array);
-}
-
-exports.applyFromCharCode = arrayLikeToString;
-
-
-/**
- * Copy the data from an array-like to an other array-like.
- * @param {Array|ArrayBuffer|Uint8Array|Buffer} arrayFrom the origin array.
- * @param {Array|ArrayBuffer|Uint8Array|Buffer} arrayTo the destination array which will be mutated.
- * @return {Array|ArrayBuffer|Uint8Array|Buffer} the updated destination array.
- */
-function arrayLikeToArrayLike(arrayFrom, arrayTo) {
-    for (var i = 0; i < arrayFrom.length; i++) {
-        arrayTo[i] = arrayFrom[i];
-    }
-    return arrayTo;
-}
-
-// a matrix containing functions to transform everything into everything.
-var transform = {};
-
-// string to ?
-transform["string"] = {
-    "string": identity,
-    "array": function(input) {
-        return stringToArrayLike(input, new Array(input.length));
-    },
-    "arraybuffer": function(input) {
-        return transform["string"]["uint8array"](input).buffer;
-    },
-    "uint8array": function(input) {
-        return stringToArrayLike(input, new Uint8Array(input.length));
-    },
-    "nodebuffer": function(input) {
-        return stringToArrayLike(input, nodejsUtils.allocBuffer(input.length));
-    }
-};
-
-// array to ?
-transform["array"] = {
-    "string": arrayLikeToString,
-    "array": identity,
-    "arraybuffer": function(input) {
-        return (new Uint8Array(input)).buffer;
-    },
-    "uint8array": function(input) {
-        return new Uint8Array(input);
-    },
-    "nodebuffer": function(input) {
-        return nodejsUtils.newBufferFrom(input);
-    }
-};
-
-// arraybuffer to ?
-transform["arraybuffer"] = {
-    "string": function(input) {
-        return arrayLikeToString(new Uint8Array(input));
-    },
-    "array": function(input) {
-        return arrayLikeToArrayLike(new Uint8Array(input), new Array(input.byteLength));
-    },
-    "arraybuffer": identity,
-    "uint8array": function(input) {
-        return new Uint8Array(input);
-    },
-    "nodebuffer": function(input) {
-        return nodejsUtils.newBufferFrom(new Uint8Array(input));
-    }
-};
-
-// uint8array to ?
-transform["uint8array"] = {
-    "string": arrayLikeToString,
-    "array": function(input) {
-        return arrayLikeToArrayLike(input, new Array(input.length));
-    },
-    "arraybuffer": function(input) {
-        return input.buffer;
-    },
-    "uint8array": identity,
-    "nodebuffer": function(input) {
-        return nodejsUtils.newBufferFrom(input);
-    }
-};
-
-// nodebuffer to ?
-transform["nodebuffer"] = {
-    "string": arrayLikeToString,
-    "array": function(input) {
-        return arrayLikeToArrayLike(input, new Array(input.length));
-    },
-    "arraybuffer": function(input) {
-        return transform["nodebuffer"]["uint8array"](input).buffer;
-    },
-    "uint8array": function(input) {
-        return arrayLikeToArrayLike(input, new Uint8Array(input.length));
-    },
-    "nodebuffer": identity
-};
-
-/**
- * Transform an input into any type.
- * The supported output type are : string, array, uint8array, arraybuffer, nodebuffer.
- * If no output type is specified, the unmodified input will be returned.
- * @param {String} outputType the output type.
- * @param {String|Array|ArrayBuffer|Uint8Array|Buffer} input the input to convert.
- * @throws {Error} an Error if the browser doesn't support the requested output type.
- */
-exports.transformTo = function(outputType, input) {
-    if (!input) {
-        // undefined, null, etc
-        // an empty string won't harm.
-        input = "";
-    }
-    if (!outputType) {
-        return input;
-    }
-    exports.checkSupport(outputType);
-    var inputType = exports.getTypeOf(input);
-    var result = transform[inputType][outputType](input);
-    return result;
-};
-
-/**
- * Return the type of the input.
- * The type will be in a format valid for JSZip.utils.transformTo : string, array, uint8array, arraybuffer.
- * @param {Object} input the input to identify.
- * @return {String} the (lowercase) type of the input.
- */
-exports.getTypeOf = function(input) {
-    if (typeof input === "string") {
-        return "string";
-    }
-    if (Object.prototype.toString.call(input) === "[object Array]") {
-        return "array";
-    }
-    if (support.nodebuffer && nodejsUtils.isBuffer(input)) {
-        return "nodebuffer";
-    }
-    if (support.uint8array && input instanceof Uint8Array) {
-        return "uint8array";
-    }
-    if (support.arraybuffer && input instanceof ArrayBuffer) {
-        return "arraybuffer";
-    }
-};
-
-/**
- * Throw an exception if the type is not supported.
- * @param {String} type the type to check.
- * @throws {Error} an Error if the browser doesn't support the requested type.
- */
-exports.checkSupport = function(type) {
-    var supported = support[type.toLowerCase()];
-    if (!supported) {
-        throw new Error(type + " is not supported by this platform");
-    }
-};
-
-exports.MAX_VALUE_16BITS = 65535;
-exports.MAX_VALUE_32BITS = -1; // well, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF" is parsed as -1
-
-/**
- * Prettify a string read as binary.
- * @param {string} str the string to prettify.
- * @return {string} a pretty string.
- */
-exports.pretty = function(str) {
-    var res = '',
-        code, i;
-    for (i = 0; i < (str || "").length; i++) {
-        code = str.charCodeAt(i);
-        res += '\\x' + (code < 16 ? "0" : "") + code.toString(16).toUpperCase();
-    }
-    return res;
-};
-
-/**
- * Defer the call of a function.
- * @param {Function} callback the function to call asynchronously.
- * @param {Array} args the arguments to give to the callback.
- */
-exports.delay = function(callback, args, self) {
-    setImmediate(function () {
-        callback.apply(self || null, args || []);
-    });
-};
-
-/**
- * Extends a prototype with an other, without calling a constructor with
- * side effects. Inspired by nodejs' `utils.inherits`
- * @param {Function} ctor the constructor to augment
- * @param {Function} superCtor the parent constructor to use
- */
-exports.inherits = function (ctor, superCtor) {
-    var Obj = function() {};
-    Obj.prototype = superCtor.prototype;
-    ctor.prototype = new Obj();
-};
-
-/**
- * Merge the objects passed as parameters into a new one.
- * @private
- * @param {...Object} var_args All objects to merge.
- * @return {Object} a new object with the data of the others.
- */
-exports.extend = function() {
-    var result = {}, i, attr;
-    for (i = 0; i < arguments.length; i++) { // arguments is not enumerable in some browsers
-        for (attr in arguments[i]) {
-            if (arguments[i].hasOwnProperty(attr) && typeof result[attr] === "undefined") {
-                result[attr] = arguments[i][attr];
-            }
-        }
-    }
-    return result;
-};
-
-/**
- * Transform arbitrary content into a Promise.
- * @param {String} name a name for the content being processed.
- * @param {Object} inputData the content to process.
- * @param {Boolean} isBinary true if the content is not an unicode string
- * @param {Boolean} isOptimizedBinaryString true if the string content only has one byte per character.
- * @param {Boolean} isBase64 true if the string content is encoded with base64.
- * @return {Promise} a promise in a format usable by JSZip.
- */
-exports.prepareContent = function(name, inputData, isBinary, isOptimizedBinaryString, isBase64) {
-
-    // if inputData is already a promise, this flatten it.
-    var promise = external.Promise.resolve(inputData).then(function(data) {
-        
-        
-        var isBlob = support.blob && (data instanceof Blob || ['[object File]', '[object Blob]'].indexOf(Object.prototype.toString.call(data)) !== -1);
-
-        if (isBlob && typeof FileReader !== "undefined") {
-            return new external.Promise(function (resolve, reject) {
-                var reader = new FileReader();
-
-                reader.onload = function(e) {
-                    resolve(e.target.result);
-                };
-                reader.onerror = function(e) {
-                    reject(e.target.error);
-                };
-                reader.readAsArrayBuffer(data);
-            });
-        } else {
-            return data;
-        }
-    });
-
-    return promise.then(function(data) {
-        var dataType = exports.getTypeOf(data);
-
-        if (!dataType) {
-            return external.Promise.reject(
-                new Error("Can't read the data of '" + name + "'. Is it " +
-                          "in a supported JavaScript type (String, Blob, ArrayBuffer, etc) ?")
-            );
-        }
-        // special case : it's way easier to work with Uint8Array than with ArrayBuffer
-        if (dataType === "arraybuffer") {
-            data = exports.transformTo("uint8array", data);
-        } else if (dataType === "string") {
-            if (isBase64) {
-                data = base64.decode(data);
-            }
-            else if (isBinary) {
-                // optimizedBinaryString === true means that the file has already been filtered with a 0xFF mask
-                if (isOptimizedBinaryString !== true) {
-                    // this is a string, not in a base64 format.
-                    // Be sure that this is a correct "binary string"
-                    data = string2binary(data);
-                }
-            }
-        }
-        return data;
-    });
-};
-
-},{"./base64":43,"./external":48,"./nodejsUtils":56,"./support":72,"core-js/library/fn/set-immediate":15}],75:[function(_dereq_,module,exports){
-'use strict';
-var readerFor = _dereq_('./reader/readerFor');
-var utils = _dereq_('./utils');
-var sig = _dereq_('./signature');
-var ZipEntry = _dereq_('./zipEntry');
-var utf8 = _dereq_('./utf8');
-var support = _dereq_('./support');
-//  class ZipEntries {{{
-/**
- * All the entries in the zip file.
- * @constructor
- * @param {Object} loadOptions Options for loading the stream.
- */
-function ZipEntries(loadOptions) {
-    this.files = [];
-    this.loadOptions = loadOptions;
-}
-ZipEntries.prototype = {
-    /**
-     * Check that the reader is on the specified signature.
-     * @param {string} expectedSignature the expected signature.
-     * @throws {Error} if it is an other signature.
-     */
-    checkSignature: function(expectedSignature) {
-        if (!this.reader.readAndCheckSignature(expectedSignature)) {
-            this.reader.index -= 4;
-            var signature = this.reader.readString(4);
-            throw new Error("Corrupted zip or bug: unexpected signature " + "(" + utils.pretty(signature) + ", expected " + utils.pretty(expectedSignature) + ")");
-        }
-    },
-    /**
-     * Check if the given signature is at the given index.
-     * @param {number} askedIndex the index to check.
-     * @param {string} expectedSignature the signature to expect.
-     * @return {boolean} true if the signature is here, false otherwise.
-     */
-    isSignature: function(askedIndex, expectedSignature) {
-        var currentIndex = this.reader.index;
-        this.reader.setIndex(askedIndex);
-        var signature = this.reader.readString(4);
-        var result = signature === expectedSignature;
-        this.reader.setIndex(currentIndex);
-        return result;
-    },
-    /**
-     * Read the end of the central directory.
-     */
-    readBlockEndOfCentral: function() {
-        this.diskNumber = this.reader.readInt(2);
-        this.diskWithCentralDirStart = this.reader.readInt(2);
-        this.centralDirRecordsOnThisDisk = this.reader.readInt(2);
-        this.centralDirRecords = this.reader.readInt(2);
-        this.centralDirSize = this.reader.readInt(4);
-        this.centralDirOffset = this.reader.readInt(4);
-
-        this.zipCommentLength = this.reader.readInt(2);
-        // warning : the encoding depends of the system locale
-        // On a linux machine with LANG=en_US.utf8, this field is utf8 encoded.
-        // On a windows machine, this field is encoded with the localized windows code page.
-        var zipComment = this.reader.readData(this.zipCommentLength);
-        var decodeParamType = support.uint8array ? "uint8array" : "array";
-        // To get consistent behavior with the generation part, we will assume that
-        // this is utf8 encoded unless specified otherwise.
-        var decodeContent = utils.transformTo(decodeParamType, zipComment);
-        this.zipComment = this.loadOptions.decodeFileName(decodeContent);
-    },
-    /**
-     * Read the end of the Zip 64 central directory.
-     * Not merged with the method readEndOfCentral :
-     * The end of central can coexist with its Zip64 brother,
-     * I don't want to read the wrong number of bytes !
-     */
-    readBlockZip64EndOfCentral: function() {
-        this.zip64EndOfCentralSize = this.reader.readInt(8);
-        this.reader.skip(4);
-        // this.versionMadeBy = this.reader.readString(2);
-        // this.versionNeeded = this.reader.readInt(2);
-        this.diskNumber = this.reader.readInt(4);
-        this.diskWithCentralDirStart = this.reader.readInt(4);
-        this.centralDirRecordsOnThisDisk = this.reader.readInt(8);
-        this.centralDirRecords = this.reader.readInt(8);
-        this.centralDirSize = this.reader.readInt(8);
-        this.centralDirOffset = this.reader.readInt(8);
-
-        this.zip64ExtensibleData = {};
-        var extraDataSize = this.zip64EndOfCentralSize - 44,
-            index = 0,
-            extraFieldId,
-            extraFieldLength,
-            extraFieldValue;
-        while (index < extraDataSize) {
-            extraFieldId = this.reader.readInt(2);
-            extraFieldLength = this.reader.readInt(4);
-            extraFieldValue = this.reader.readData(extraFieldLength);
-            this.zip64ExtensibleData[extraFieldId] = {
-                id: extraFieldId,
-                length: extraFieldLength,
-                value: extraFieldValue
-            };
-        }
-    },
-    /**
-     * Read the end of the Zip 64 central directory locator.
-     */
-    readBlockZip64EndOfCentralLocator: function() {
-        this.diskWithZip64CentralDirStart = this.reader.readInt(4);
-        this.relativeOffsetEndOfZip64CentralDir = this.reader.readInt(8);
-        this.disksCount = this.reader.readInt(4);
-        if (this.disksCount > 1) {
-            throw new Error("Multi-volumes zip are not supported");
-        }
-    },
-    /**
-     * Read the local files, based on the offset read in the central part.
-     */
-    readLocalFiles: function() {
-        var i, file;
-        for (i = 0; i < this.files.length; i++) {
-            file = this.files[i];
-            this.reader.setIndex(file.localHeaderOffset);
-            this.checkSignature(sig.LOCAL_FILE_HEADER);
-            file.readLocalPart(this.reader);
-            file.handleUTF8();
-            file.processAttributes();
-        }
-    },
-    /**
-     * Read the central directory.
-     */
-    readCentralDir: function() {
-        var file;
-
-        this.reader.setIndex(this.centralDirOffset);
-        while (this.reader.readAndCheckSignature(sig.CENTRAL_FILE_HEADER)) {
-            file = new ZipEntry({
-                zip64: this.zip64
-            }, this.loadOptions);
-            file.readCentralPart(this.reader);
-            this.files.push(file);
-        }
-
-        if (this.centralDirRecords !== this.files.length) {
-            if (this.centralDirRecords !== 0 && this.files.length === 0) {
-                // We expected some records but couldn't find ANY.
-                // This is really suspicious, as if something went wrong.
-                throw new Error("Corrupted zip or bug: expected " + this.centralDirRecords + " records in central dir, got " + this.files.length);
-            } else {
-                // We found some records but not all.
-                // Something is wrong but we got something for the user: no error here.
-                // console.warn("expected", this.centralDirRecords, "records in central dir, got", this.files.length);
-            }
-        }
-    },
-    /**
-     * Read the end of central directory.
-     */
-    readEndOfCentral: function() {
-        var offset = this.reader.lastIndexOfSignature(sig.CENTRAL_DIRECTORY_END);
-        if (offset < 0) {
-            // Check if the content is a truncated zip or complete garbage.
-            // A "LOCAL_FILE_HEADER" is not required at the beginning (auto
-            // extractible zip for example) but it can give a good hint.
-            // If an ajax request was used without responseType, we will also
-            // get unreadable data.
-            var isGarbage = !this.isSignature(0, sig.LOCAL_FILE_HEADER);
-
-            if (isGarbage) {
-                throw new Error("Can't find end of central directory : is this a zip file ? " +
-                                "If it is, see https://stuk.github.io/jszip/documentation/howto/read_zip.html");
-            } else {
-                throw new Error("Corrupted zip: can't find end of central directory");
-            }
-
-        }
-        this.reader.setIndex(offset);
-        var endOfCentralDirOffset = offset;
-        this.checkSignature(sig.CENTRAL_DIRECTORY_END);
-        this.readBlockEndOfCentral();
-
-
-        /* extract from the zip spec :
-            4)  If one of the fields in the end of central directory
-                record is too small to hold required data, the field
-                should be set to -1 (0xFFFF or 0xFFFFFFFF) and the
-                ZIP64 format record should be created.
-            5)  The end of central directory record and the
-                Zip64 end of central directory locator record must
-                reside on the same disk when splitting or spanning
-                an archive.
-         */
-        if (this.diskNumber === utils.MAX_VALUE_16BITS || this.diskWithCentralDirStart === utils.MAX_VALUE_16BITS || this.centralDirRecordsOnThisDisk === utils.MAX_VALUE_16BITS || this.centralDirRecords === utils.MAX_VALUE_16BITS || this.centralDirSize === utils.MAX_VALUE_32BITS || this.centralDirOffset === utils.MAX_VALUE_32BITS) {
-            this.zip64 = true;
-
-            /*
-            Warning : the zip64 extension is supported, but ONLY if the 64bits integer read from
-            the zip file can fit into a 32bits integer. This cannot be solved : JavaScript represents
-            all numbers as 64-bit double precision IEEE 754 floating point numbers.
-            So, we have 53bits for integers and bitwise operations treat everything as 32bits.
-            see https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Operators/Bitwise_Operators
-            and http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-262.pdf section 8.5
-            */
-
-            // should look for a zip64 EOCD locator
-            offset = this.reader.lastIndexOfSignature(sig.ZIP64_CENTRAL_DIRECTORY_LOCATOR);
-            if (offset < 0) {
-                throw new Error("Corrupted zip: can't find the ZIP64 end of central directory locator");
-            }
-            this.reader.setIndex(offset);
-            this.checkSignature(sig.ZIP64_CENTRAL_DIRECTORY_LOCATOR);
-            this.readBlockZip64EndOfCentralLocator();
-
-            // now the zip64 EOCD record
-            if (!this.isSignature(this.relativeOffsetEndOfZip64CentralDir, sig.ZIP64_CENTRAL_DIRECTORY_END)) {
-                // console.warn("ZIP64 end of central directory not where expected.");
-                this.relativeOffsetEndOfZip64CentralDir = this.reader.lastIndexOfSignature(sig.ZIP64_CENTRAL_DIRECTORY_END);
-                if (this.relativeOffsetEndOfZip64CentralDir < 0) {
-                    throw new Error("Corrupted zip: can't find the ZIP64 end of central directory");
-                }
-            }
-            this.reader.setIndex(this.relativeOffsetEndOfZip64CentralDir);
-            this.checkSignature(sig.ZIP64_CENTRAL_DIRECTORY_END);
-            this.readBlockZip64EndOfCentral();
-        }
-
-        var expectedEndOfCentralDirOffset = this.centralDirOffset + this.centralDirSize;
-        if (this.zip64) {
-            expectedEndOfCentralDirOffset += 20; // end of central dir 64 locator
-            expectedEndOfCentralDirOffset += 12 /* should not include the leading 12 bytes */ + this.zip64EndOfCentralSize;
-        }
-
-        var extraBytes = endOfCentralDirOffset - expectedEndOfCentralDirOffset;
-
-        if (extraBytes > 0) {
-            // console.warn(extraBytes, "extra bytes at beginning or within zipfile");
-            if (this.isSignature(endOfCentralDirOffset, sig.CENTRAL_FILE_HEADER)) {
-                // The offsets seem wrong, but we have something at the specified offset.
-                // So… we keep it.
-            } else {
-                // the offset is wrong, update the "zero" of the reader
-                // this happens if data has been prepended (crx files for example)
-                this.reader.zero = extraBytes;
-            }
-        } else if (extraBytes < 0) {
-            throw new Error("Corrupted zip: missing " + Math.abs(extraBytes) + " bytes.");
-        }
-    },
-    prepareReader: function(data) {
-        this.reader = readerFor(data);
-    },
-    /**
-     * Read a zip file and create ZipEntries.
-     * @param {String|ArrayBuffer|Uint8Array|Buffer} data the binary string representing a zip file.
-     */
-    load: function(data) {
-        this.prepareReader(data);
-        this.readEndOfCentral();
-        this.readCentralDir();
-        this.readLocalFiles();
-    }
-};
-// }}} end of ZipEntries
-module.exports = ZipEntries;
-
-},{"./reader/readerFor":64,"./signature":65,"./support":72,"./utf8":73,"./utils":74,"./zipEntry":76}],76:[function(_dereq_,module,exports){
-'use strict';
-var readerFor = _dereq_('./reader/readerFor');
-var utils = _dereq_('./utils');
-var CompressedObject = _dereq_('./compressedObject');
-var crc32fn = _dereq_('./crc32');
-var utf8 = _dereq_('./utf8');
-var compressions = _dereq_('./compressions');
-var support = _dereq_('./support');
-
-var MADE_BY_DOS = 0x00;
-var MADE_BY_UNIX = 0x03;
-
-/**
- * Find a compression registered in JSZip.
- * @param {string} compressionMethod the method magic to find.
- * @return {Object|null} the JSZip compression object, null if none found.
- */
-var findCompression = function(compressionMethod) {
-    for (var method in compressions) {
-        if (!compressions.hasOwnProperty(method)) {
-            continue;
-        }
-        if (compressions[method].magic === compressionMethod) {
-            return compressions[method];
-        }
-    }
-    return null;
-};
-
-// class ZipEntry {{{
-/**
- * An entry in the zip file.
- * @constructor
- * @param {Object} options Options of the current file.
- * @param {Object} loadOptions Options for loading the stream.
- */
-function ZipEntry(options, loadOptions) {
-    this.options = options;
-    this.loadOptions = loadOptions;
-}
-ZipEntry.prototype = {
-    /**
-     * say if the file is encrypted.
-     * @return {boolean} true if the file is encrypted, false otherwise.
-     */
-    isEncrypted: function() {
-        // bit 1 is set
-        return (this.bitFlag & 0x0001) === 0x0001;
-    },
-    /**
-     * say if the file has utf-8 filename/comment.
-     * @return {boolean} true if the filename/comment is in utf-8, false otherwise.
-     */
-    useUTF8: function() {
-        // bit 11 is set
-        return (this.bitFlag & 0x0800) === 0x0800;
-    },
-    /**
-     * Read the local part of a zip file and add the info in this object.
-     * @param {DataReader} reader the reader to use.
-     */
-    readLocalPart: function(reader) {
-        var compression, localExtraFieldsLength;
-
-        // we already know everything from the central dir !
-        // If the central dir data are false, we are doomed.
-        // On the bright side, the local part is scary  : zip64, data descriptors, both, etc.
-        // The less data we get here, the more reliable this should be.
-        // Let's skip the whole header and dash to the data !
-        reader.skip(22);
-        // in some zip created on windows, the filename stored in the central dir contains \ instead of /.
-        // Strangely, the filename here is OK.
-        // I would love to treat these zip files as corrupted (see http://www.info-zip.org/FAQ.html#backslashes
-        // or APPNOTE#4.4.17.1, "All slashes MUST be forward slashes '/'") but there are a lot of bad zip generators...
-        // Search "unzip mismatching "local" filename continuing with "central" filename version" on
-        // the internet.
-        //
-        // I think I see the logic here : the central directory is used to display
-        // content and the local directory is used to extract the files. Mixing / and \
-        // may be used to display \ to windows users and use / when extracting the files.
-        // Unfortunately, this lead also to some issues : http://seclists.org/fulldisclosure/2009/Sep/394
-        this.fileNameLength = reader.readInt(2);
-        localExtraFieldsLength = reader.readInt(2); // can't be sure this will be the same as the central dir
-        // the fileName is stored as binary data, the handleUTF8 method will take care of the encoding.
-        this.fileName = reader.readData(this.fileNameLength);
-        reader.skip(localExtraFieldsLength);
-
-        if (this.compressedSize === -1 || this.uncompressedSize === -1) {
-            throw new Error("Bug or corrupted zip : didn't get enough informations from the central directory " + "(compressedSize === -1 || uncompressedSize === -1)");
-        }
-
-        compression = findCompression(this.compressionMethod);
-        if (compression === null) { // no compression found
-            throw new Error("Corrupted zip : compression " + utils.pretty(this.compressionMethod) + " unknown (inner file : " + utils.transformTo("string", this.fileName) + ")");
-        }
-        this.decompressed = new CompressedObject(this.compressedSize, this.uncompressedSize, this.crc32, compression, reader.readData(this.compressedSize));
-    },
-
-    /**
-     * Read the central part of a zip file and add the info in this object.
-     * @param {DataReader} reader the reader to use.
-     */
-    readCentralPart: function(reader) {
-        this.versionMadeBy = reader.readInt(2);
-        reader.skip(2);
-        // this.versionNeeded = reader.readInt(2);
-        this.bitFlag = reader.readInt(2);
-        this.compressionMethod = reader.readString(2);
-        this.date = reader.readDate();
-        this.crc32 = reader.readInt(4);
-        this.compressedSize = reader.readInt(4);
-        this.uncompressedSize = reader.readInt(4);
-        var fileNameLength = reader.readInt(2);
-        this.extraFieldsLength = reader.readInt(2);
-        this.fileCommentLength = reader.readInt(2);
-        this.diskNumberStart = reader.readInt(2);
-        this.internalFileAttributes = reader.readInt(2);
-        this.externalFileAttributes = reader.readInt(4);
-        this.localHeaderOffset = reader.readInt(4);
-
-        if (this.isEncrypted()) {
-            throw new Error("Encrypted zip are not supported");
-        }
-
-        // will be read in the local part, see the comments there
-        reader.skip(fileNameLength);
-        this.readExtraFields(reader);
-        this.parseZIP64ExtraField(reader);
-        this.fileComment = reader.readData(this.fileCommentLength);
-    },
-
-    /**
-     * Parse the external file attributes and get the unix/dos permissions.
-     */
-    processAttributes: function () {
-        this.unixPermissions = null;
-        this.dosPermissions = null;
-        var madeBy = this.versionMadeBy >> 8;
-
-        // Check if we have the DOS directory flag set.
-        // We look for it in the DOS and UNIX permissions
-        // but some unknown platform could set it as a compatibility flag.
-        this.dir = this.externalFileAttributes & 0x0010 ? true : false;
-
-        if(madeBy === MADE_BY_DOS) {
-            // first 6 bits (0 to 5)
-            this.dosPermissions = this.externalFileAttributes & 0x3F;
-        }
-
-        if(madeBy === MADE_BY_UNIX) {
-            this.unixPermissions = (this.externalFileAttributes >> 16) & 0xFFFF;
-            // the octal permissions are in (this.unixPermissions & 0x01FF).toString(8);
-        }
-
-        // fail safe : if the name ends with a / it probably means a folder
-        if (!this.dir && this.fileNameStr.slice(-1) === '/') {
-            this.dir = true;
-        }
-    },
-
-    /**
-     * Parse the ZIP64 extra field and merge the info in the current ZipEntry.
-     * @param {DataReader} reader the reader to use.
-     */
-    parseZIP64ExtraField: function(reader) {
-
-        if (!this.extraFields[0x0001]) {
-            return;
-        }
-
-        // should be something, preparing the extra reader
-        var extraReader = readerFor(this.extraFields[0x0001].value);
-
-        // I really hope that these 64bits integer can fit in 32 bits integer, because js
-        // won't let us have more.
-        if (this.uncompressedSize === utils.MAX_VALUE_32BITS) {
-            this.uncompressedSize = extraReader.readInt(8);
-        }
-        if (this.compressedSize === utils.MAX_VALUE_32BITS) {
-            this.compressedSize = extraReader.readInt(8);
-        }
-        if (this.localHeaderOffset === utils.MAX_VALUE_32BITS) {
-            this.localHeaderOffset = extraReader.readInt(8);
-        }
-        if (this.diskNumberStart === utils.MAX_VALUE_32BITS) {
-            this.diskNumberStart = extraReader.readInt(4);
-        }
-    },
-    /**
-     * Read the central part of a zip file and add the info in this object.
-     * @param {DataReader} reader the reader to use.
-     */
-    readExtraFields: function(reader) {
-        var end = reader.index + this.extraFieldsLength,
-            extraFieldId,
-            extraFieldLength,
-            extraFieldValue;
-
-        if (!this.extraFields) {
-            this.extraFields = {};
-        }
-
-        while (reader.index < end) {
-            extraFieldId = reader.readInt(2);
-            extraFieldLength = reader.readInt(2);
-            extraFieldValue = reader.readData(extraFieldLength);
-
-            this.extraFields[extraFieldId] = {
-                id: extraFieldId,
-                length: extraFieldLength,
-                value: extraFieldValue
-            };
-        }
-    },
-    /**
-     * Apply an UTF8 transformation if needed.
-     */
-    handleUTF8: function() {
-        var decodeParamType = support.uint8array ? "uint8array" : "array";
-        if (this.useUTF8()) {
-            this.fileNameStr = utf8.utf8decode(this.fileName);
-            this.fileCommentStr = utf8.utf8decode(this.fileComment);
-        } else {
-            var upath = this.findExtraFieldUnicodePath();
-            if (upath !== null) {
-                this.fileNameStr = upath;
-            } else {
-                // ASCII text or unsupported code page
-                var fileNameByteArray =  utils.transformTo(decodeParamType, this.fileName);
-                this.fileNameStr = this.loadOptions.decodeFileName(fileNameByteArray);
-            }
-
-            var ucomment = this.findExtraFieldUnicodeComment();
-            if (ucomment !== null) {
-                this.fileCommentStr = ucomment;
-            } else {
-                // ASCII text or unsupported code page
-                var commentByteArray =  utils.transformTo(decodeParamType, this.fileComment);
-                this.fileCommentStr = this.loadOptions.decodeFileName(commentByteArray);
-            }
-        }
-    },
-
-    /**
-     * Find the unicode path declared in the extra field, if any.
-     * @return {String} the unicode path, null otherwise.
-     */
-    findExtraFieldUnicodePath: function() {
-        var upathField = this.extraFields[0x7075];
-        if (upathField) {
-            var extraReader = readerFor(upathField.value);
-
-            // wrong version
-            if (extraReader.readInt(1) !== 1) {
-                return null;
-            }
-
-            // the crc of the filename changed, this field is out of date.
-            if (crc32fn(this.fileName) !== extraReader.readInt(4)) {
-                return null;
-            }
-
-            return utf8.utf8decode(extraReader.readData(upathField.length - 5));
-        }
-        return null;
-    },
-
-    /**
-     * Find the unicode comment declared in the extra field, if any.
-     * @return {String} the unicode comment, null otherwise.
-     */
-    findExtraFieldUnicodeComment: function() {
-        var ucommentField = this.extraFields[0x6375];
-        if (ucommentField) {
-            var extraReader = readerFor(ucommentField.value);
-
-            // wrong version
-            if (extraReader.readInt(1) !== 1) {
-                return null;
-            }
-
-            // the crc of the comment changed, this field is out of date.
-            if (crc32fn(this.fileComment) !== extraReader.readInt(4)) {
-                return null;
-            }
-
-            return utf8.utf8decode(extraReader.readData(ucommentField.length - 5));
-        }
-        return null;
-    }
-};
-module.exports = ZipEntry;
-
-},{"./compressedObject":44,"./compressions":45,"./crc32":46,"./reader/readerFor":64,"./support":72,"./utf8":73,"./utils":74}],77:[function(_dereq_,module,exports){
-'use strict';
-
-var StreamHelper = _dereq_('./stream/StreamHelper');
-var DataWorker = _dereq_('./stream/DataWorker');
-var utf8 = _dereq_('./utf8');
-var CompressedObject = _dereq_('./compressedObject');
-var GenericWorker = _dereq_('./stream/GenericWorker');
-
-/**
- * A simple object representing a file in the zip file.
- * @constructor
- * @param {string} name the name of the file
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data
- * @param {Object} options the options of the file
- */
-var ZipObject = function(name, data, options) {
-    this.name = name;
-    this.dir = options.dir;
-    this.date = options.date;
-    this.comment = options.comment;
-    this.unixPermissions = options.unixPermissions;
-    this.dosPermissions = options.dosPermissions;
-
-    this._data = data;
-    this._dataBinary = options.binary;
-    // keep only the compression
-    this.options = {
-        compression : options.compression,
-        compressionOptions : options.compressionOptions
+Data64URIReader.prototype = new Reader();
+Data64URIReader.prototype.constructor = Data64URIReader;
+
+function BlobReader(blob) {
+  var that = this;
+
+  function init(callback) {
+    that.size = blob.size;
+    callback();
+  }
+
+  function readUint8Array(index, length, callback, onerror) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      callback(new Uint8Array(e.target.result));
     };
-};
-
-ZipObject.prototype = {
-    /**
-     * Create an internal stream for the content of this object.
-     * @param {String} type the type of each chunk.
-     * @return StreamHelper the stream.
-     */
-    internalStream: function (type) {
-        var result = null, outputType = "string";
-        try {
-            if (!type) {
-                throw new Error("No output type specified.");
-            }
-            outputType = type.toLowerCase();
-            var askUnicodeString = outputType === "string" || outputType === "text";
-            if (outputType === "binarystring" || outputType === "text") {
-                outputType = "string";
-            }
-            result = this._decompressWorker();
-
-            var isUnicodeString = !this._dataBinary;
-
-            if (isUnicodeString && !askUnicodeString) {
-                result = result.pipe(new utf8.Utf8EncodeWorker());
-            }
-            if (!isUnicodeString && askUnicodeString) {
-                result = result.pipe(new utf8.Utf8DecodeWorker());
-            }
-        } catch (e) {
-            result = new GenericWorker("error");
-            result.error(e);
-        }
-
-        return new StreamHelper(result, outputType, "");
-    },
-
-    /**
-     * Prepare the content in the asked type.
-     * @param {String} type the type of the result.
-     * @param {Function} onUpdate a function to call on each internal update.
-     * @return Promise the promise of the result.
-     */
-    async: function (type, onUpdate) {
-        return this.internalStream(type).accumulate(onUpdate);
-    },
-
-    /**
-     * Prepare the content as a nodejs stream.
-     * @param {String} type the type of each chunk.
-     * @param {Function} onUpdate a function to call on each internal update.
-     * @return Stream the stream.
-     */
-    nodeStream: function (type, onUpdate) {
-        return this.internalStream(type || "nodebuffer").toNodejsStream(onUpdate);
-    },
-
-    /**
-     * Return a worker for the compressed content.
-     * @private
-     * @param {Object} compression the compression object to use.
-     * @param {Object} compressionOptions the options to use when compressing.
-     * @return Worker the worker.
-     */
-    _compressWorker: function (compression, compressionOptions) {
-        if (
-            this._data instanceof CompressedObject &&
-            this._data.compression.magic === compression.magic
-        ) {
-            return this._data.getCompressedWorker();
-        } else {
-            var result = this._decompressWorker();
-            if(!this._dataBinary) {
-                result = result.pipe(new utf8.Utf8EncodeWorker());
-            }
-            return CompressedObject.createWorkerFrom(result, compression, compressionOptions);
-        }
-    },
-    /**
-     * Return a worker for the decompressed content.
-     * @private
-     * @return Worker the worker.
-     */
-    _decompressWorker : function () {
-        if (this._data instanceof CompressedObject) {
-            return this._data.getContentWorker();
-        } else if (this._data instanceof GenericWorker) {
-            return this._data;
-        } else {
-            return new DataWorker(this._data);
-        }
-    }
-};
-
-var removedMethods = ["asText", "asBinary", "asNodeBuffer", "asUint8Array", "asArrayBuffer"];
-var removedFn = function () {
-    throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
-};
-
-for(var i = 0; i < removedMethods.length; i++) {
-    ZipObject.prototype[removedMethods[i]] = removedFn;
-}
-module.exports = ZipObject;
-
-},{"./compressedObject":44,"./stream/DataWorker":69,"./stream/GenericWorker":70,"./stream/StreamHelper":71,"./utf8":73}],78:[function(_dereq_,module,exports){
-'use strict';
-var immediate = _dereq_('immediate');
-
-/* istanbul ignore next */
-function INTERNAL() {}
-
-var handlers = {};
-
-var REJECTED = ['REJECTED'];
-var FULFILLED = ['FULFILLED'];
-var PENDING = ['PENDING'];
-
-module.exports = Promise;
-
-function Promise(resolver) {
-  if (typeof resolver !== 'function') {
-    throw new TypeError('resolver must be a function');
-  }
-  this.state = PENDING;
-  this.queue = [];
-  this.outcome = void 0;
-  if (resolver !== INTERNAL) {
-    safelyResolveThenable(this, resolver);
-  }
-}
-
-Promise.prototype["catch"] = function (onRejected) {
-  return this.then(null, onRejected);
-};
-Promise.prototype.then = function (onFulfilled, onRejected) {
-  if (typeof onFulfilled !== 'function' && this.state === FULFILLED ||
-    typeof onRejected !== 'function' && this.state === REJECTED) {
-    return this;
-  }
-  var promise = new this.constructor(INTERNAL);
-  if (this.state !== PENDING) {
-    var resolver = this.state === FULFILLED ? onFulfilled : onRejected;
-    unwrap(promise, resolver, this.outcome);
-  } else {
-    this.queue.push(new QueueItem(promise, onFulfilled, onRejected));
-  }
-
-  return promise;
-};
-function QueueItem(promise, onFulfilled, onRejected) {
-  this.promise = promise;
-  if (typeof onFulfilled === 'function') {
-    this.onFulfilled = onFulfilled;
-    this.callFulfilled = this.otherCallFulfilled;
-  }
-  if (typeof onRejected === 'function') {
-    this.onRejected = onRejected;
-    this.callRejected = this.otherCallRejected;
-  }
-}
-QueueItem.prototype.callFulfilled = function (value) {
-  handlers.resolve(this.promise, value);
-};
-QueueItem.prototype.otherCallFulfilled = function (value) {
-  unwrap(this.promise, this.onFulfilled, value);
-};
-QueueItem.prototype.callRejected = function (value) {
-  handlers.reject(this.promise, value);
-};
-QueueItem.prototype.otherCallRejected = function (value) {
-  unwrap(this.promise, this.onRejected, value);
-};
-
-function unwrap(promise, func, value) {
-  immediate(function () {
-    var returnValue;
+    reader.onerror = onerror;
     try {
-      returnValue = func(value);
+      reader.readAsArrayBuffer(blobSlice(blob, index, length));
     } catch (e) {
-      return handlers.reject(promise, e);
+      onerror(e);
     }
-    if (returnValue === promise) {
-      handlers.reject(promise, new TypeError('Cannot resolve promise with itself'));
-    } else {
-      handlers.resolve(promise, returnValue);
-    }
-  });
+  }
+
+  that.size = 0;
+  that.init = init;
+  that.readUint8Array = readUint8Array;
 }
 
-handlers.resolve = function (self, value) {
-  var result = tryCatch(getThen, value);
-  if (result.status === 'error') {
-    return handlers.reject(self, result.value);
-  }
-  var thenable = result.value;
+BlobReader.prototype = new Reader();
+BlobReader.prototype.constructor = BlobReader;
 
-  if (thenable) {
-    safelyResolveThenable(self, thenable);
-  } else {
-    self.state = FULFILLED;
-    self.outcome = value;
-    var i = -1;
-    var len = self.queue.length;
-    while (++i < len) {
-      self.queue[i].callFulfilled(value);
-    }
-  }
-  return self;
-};
-handlers.reject = function (self, error) {
-  self.state = REJECTED;
-  self.outcome = error;
-  var i = -1;
-  var len = self.queue.length;
-  while (++i < len) {
-    self.queue[i].callRejected(error);
-  }
-  return self;
+// Writers
+
+function Writer() {
+}
+
+Writer.prototype.getData = function(callback) {
+  callback(this.data);
 };
 
-function getThen(obj) {
-  // Make sure we only access the accessor once as required by the spec
-  var then = obj && obj.then;
-  if (obj && (typeof obj === 'object' || typeof obj === 'function') && typeof then === 'function') {
-    return function appyThen() {
-      then.apply(obj, arguments);
+function TextWriter(encoding) {
+  var that = this, blob;
+
+  function init(callback) {
+    blob = new Blob([], {
+      type: TEXT_PLAIN
+    });
+    callback();
+  }
+
+  function writeUint8Array(array, callback) {
+    blob = new Blob([blob, appendABViewSupported ? array : array.buffer], {
+      type: TEXT_PLAIN
+    });
+    callback();
+  }
+
+  function getData(callback, onerror) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      callback(e.target.result);
     };
+    reader.onerror = onerror;
+    reader.readAsText(blob, encoding);
   }
+
+  that.init = init;
+  that.writeUint8Array = writeUint8Array;
+  that.getData = getData;
 }
 
-function safelyResolveThenable(self, thenable) {
-  // Either fulfill, reject or reject with error
-  var called = false;
-  function onError(value) {
-    if (called) {
-      return;
-    }
-    called = true;
-    handlers.reject(self, value);
+TextWriter.prototype = new Writer();
+TextWriter.prototype.constructor = TextWriter;
+
+function Data64URIWriter(contentType) {
+  var that = this, data = "", pending = "";
+
+  function init(callback) {
+    data += "data:" + (contentType || "") + ";base64,";
+    callback();
   }
 
-  function onSuccess(value) {
-    if (called) {
-      return;
-    }
-    called = true;
-    handlers.resolve(self, value);
+  function writeUint8Array(array, callback) {
+    var i, delta = pending.length, dataString = pending;
+    pending = "";
+    for (i = 0; i < (Math.floor((delta + array.length) / 3) * 3) - delta; i++)
+      dataString += String.fromCharCode(array[i]);
+    for (; i < array.length; i++)
+      pending += String.fromCharCode(array[i]);
+    if (dataString.length > 2)
+      data += btoa(dataString);
+    else
+      pending = dataString;
+    callback();
   }
 
-  function tryToUnwrap() {
-    thenable(onSuccess, onError);
+  function getData(callback) {
+    callback(data + btoa(pending));
   }
 
-  var result = tryCatch(tryToUnwrap);
-  if (result.status === 'error') {
-    onError(result.value);
-  }
+  that.init = init;
+  that.writeUint8Array = writeUint8Array;
+  that.getData = getData;
 }
 
-function tryCatch(func, value) {
-  var out = {};
-  try {
-    out.value = func(value);
-    out.status = 'success';
-  } catch (e) {
-    out.status = 'error';
-    out.value = e;
+Data64URIWriter.prototype = new Writer();
+Data64URIWriter.prototype.constructor = Data64URIWriter;
+
+function BlobWriter(contentType) {
+  var blob, that = this;
+
+  function init(callback) {
+    blob = new Blob([], {
+      type: contentType
+    });
+    callback();
+  }
+
+  function writeUint8Array(array, callback) {
+    blob = new Blob([blob, appendABViewSupported ? array : array.buffer], {
+      type: contentType
+    });
+    callback();
+  }
+
+  function getData(callback) {
+    callback(blob);
+  }
+
+  that.init = init;
+  that.writeUint8Array = writeUint8Array;
+  that.getData = getData;
+}
+
+BlobWriter.prototype = new Writer();
+BlobWriter.prototype.constructor = BlobWriter;
+
+/**
+ * inflate/deflate core functions
+ * @param worker {Worker} web worker for the task.
+ * @param initialMessage {Object} initial message to be sent to the worker. should contain
+ *   sn(serial number for distinguishing multiple tasks sent to the worker), and codecClass.
+ *   This function may add more properties before sending.
+ */
+function launchWorkerProcess(worker, initialMessage, reader, writer, offset, size, onprogress, onend, onreaderror, onwriteerror) {
+  var chunkIndex = 0, index, outputSize, sn = initialMessage.sn, crc;
+
+  function onflush() {
+    worker.removeEventListener('message', onmessage, false);
+    onend(outputSize, crc);
+  }
+
+  function onmessage(event) {
+    var message = event.data, data = message.data, err = message.error;
+    if (err) {
+      err.toString = function() {
+        return 'Error: ' + this.message;
+      };
+      onreaderror(err);
+      return;
+    }
+    if (message.sn !== sn)
+      return;
+    if (typeof message.codecTime === 'number')
+      worker.codecTime += message.codecTime; // should be before onflush()
+    if (typeof message.crcTime === 'number')
+      worker.crcTime += message.crcTime;
+
+    switch (message.type) {
+      case 'append':
+        if (data) {
+          outputSize += data.length;
+          writer.writeUint8Array(data, function() {
+            step();
+          }, onwriteerror);
+        } else
+          step();
+        break;
+      case 'flush':
+        crc = message.crc;
+        if (data) {
+          outputSize += data.length;
+          writer.writeUint8Array(data, function() {
+            onflush();
+          }, onwriteerror);
+        } else
+          onflush();
+        break;
+      case 'progress':
+        if (onprogress)
+          onprogress(index + message.loaded, size);
+        break;
+      case 'importScripts': //no need to handle here
+      case 'newTask':
+      case 'echo':
+        break;
+      default:
+        console.warn('zip.js:launchWorkerProcess: unknown message: ', message);
+    }
+  }
+
+  function step() {
+    index = chunkIndex * CHUNK_SIZE;
+    // use `<=` instead of `<`, because `size` may be 0.
+    if (index <= size) {
+      reader.readUint8Array(offset + index, Math.min(CHUNK_SIZE, size - index), function(array) {
+        if (onprogress)
+          onprogress(index, size);
+        var msg = index === 0 ? initialMessage : {sn: sn};
+        msg.type = 'append';
+        msg.data = array;
+
+        // posting a message with transferables will fail on IE10
+        try {
+          worker.postMessage(msg, [array.buffer]);
+        } catch (ex) {
+          worker.postMessage(msg); // retry without transferables
+        }
+        chunkIndex++;
+      }, onreaderror);
+    } else {
+      worker.postMessage({
+        sn: sn,
+        type: 'flush'
+      });
+    }
+  }
+
+  outputSize = 0;
+  worker.addEventListener('message', onmessage, false);
+  step();
+}
+
+function launchProcess(process, reader, writer, offset, size, crcType, onprogress, onend, onreaderror, onwriteerror) {
+  var chunkIndex = 0, index, outputSize = 0,
+    crcInput = crcType === 'input',
+    crcOutput = crcType === 'output',
+    crc = new Crc32();
+
+  function step() {
+    var outputData;
+    index = chunkIndex * CHUNK_SIZE;
+    if (index < size)
+      reader.readUint8Array(offset + index, Math.min(CHUNK_SIZE, size - index), function(inputData) {
+        var outputData;
+        try {
+          outputData = process.append(inputData, function(loaded) {
+            if (onprogress)
+              onprogress(index + loaded, size);
+          });
+        } catch (e) {
+          onreaderror(e);
+          return;
+        }
+        if (outputData) {
+          outputSize += outputData.length;
+          writer.writeUint8Array(outputData, function() {
+            chunkIndex++;
+            setTimeout(step, 1);
+          }, onwriteerror);
+          if (crcOutput)
+            crc.append(outputData);
+        } else {
+          chunkIndex++;
+          setTimeout(step, 1);
+        }
+        if (crcInput)
+          crc.append(inputData);
+        if (onprogress)
+          onprogress(index, size);
+      }, onreaderror);
+    else {
+      try {
+        outputData = process.flush();
+      } catch (e) {
+        onreaderror(e);
+        return;
+      }
+      if (outputData) {
+        if (crcOutput)
+          crc.append(outputData);
+        outputSize += outputData.length;
+        writer.writeUint8Array(outputData, function() {
+          onend(outputSize, crc.get());
+        }, onwriteerror);
+      } else
+        onend(outputSize, crc.get());
+    }
+  }
+
+  step();
+}
+
+function inflate(worker, sn, reader, writer, offset, size, computeCrc32, onend, onprogress, onreaderror, onwriteerror) {
+  var crcType = computeCrc32 ? 'output' : 'none';
+  if (zip.useWebWorkers) {
+    var initialMessage = {
+      sn: sn,
+      codecClass: 'Inflater',
+      crcType: crcType,
+    };
+    launchWorkerProcess(worker, initialMessage, reader, writer, offset, size, onprogress, onend, onreaderror, onwriteerror);
+  } else
+    launchProcess(new zip.Inflater(), reader, writer, offset, size, crcType, onprogress, onend, onreaderror, onwriteerror);
+}
+
+function deflate(worker, sn, reader, writer, level, onend, onprogress, onreaderror, onwriteerror) {
+  var crcType = 'input';
+  if (zip.useWebWorkers) {
+    var initialMessage = {
+      sn: sn,
+      options: {level: level},
+      codecClass: 'Deflater',
+      crcType: crcType,
+    };
+    launchWorkerProcess(worker, initialMessage, reader, writer, 0, reader.size, onprogress, onend, onreaderror, onwriteerror);
+  } else
+    launchProcess(new zip.Deflater(), reader, writer, 0, reader.size, crcType, onprogress, onend, onreaderror, onwriteerror);
+}
+
+function copy(worker, sn, reader, writer, offset, size, computeCrc32, onend, onprogress, onreaderror, onwriteerror) {
+  var crcType = 'input';
+  if (zip.useWebWorkers && computeCrc32) {
+    var initialMessage = {
+      sn: sn,
+      codecClass: 'NOOP',
+      crcType: crcType,
+    };
+    launchWorkerProcess(worker, initialMessage, reader, writer, offset, size, onprogress, onend, onreaderror, onwriteerror);
+  } else
+    launchProcess(new NOOP(), reader, writer, offset, size, crcType, onprogress, onend, onreaderror, onwriteerror);
+}
+
+// ZipReader
+
+function decodeASCII(str) {
+  var i, out = "", charCode, extendedASCII = ['\u00C7', '\u00FC', '\u00E9', '\u00E2', '\u00E4', '\u00E0', '\u00E5', '\u00E7', '\u00EA', '\u00EB',
+    '\u00E8', '\u00EF', '\u00EE', '\u00EC', '\u00C4', '\u00C5', '\u00C9', '\u00E6', '\u00C6', '\u00F4', '\u00F6', '\u00F2', '\u00FB', '\u00F9',
+    '\u00FF', '\u00D6', '\u00DC', '\u00F8', '\u00A3', '\u00D8', '\u00D7', '\u0192', '\u00E1', '\u00ED', '\u00F3', '\u00FA', '\u00F1', '\u00D1',
+    '\u00AA', '\u00BA', '\u00BF', '\u00AE', '\u00AC', '\u00BD', '\u00BC', '\u00A1', '\u00AB', '\u00BB', '_', '_', '_', '\u00A6', '\u00A6',
+    '\u00C1', '\u00C2', '\u00C0', '\u00A9', '\u00A6', '\u00A6', '+', '+', '\u00A2', '\u00A5', '+', '+', '-', '-', '+', '-', '+', '\u00E3',
+    '\u00C3', '+', '+', '-', '-', '\u00A6', '-', '+', '\u00A4', '\u00F0', '\u00D0', '\u00CA', '\u00CB', '\u00C8', 'i', '\u00CD', '\u00CE',
+    '\u00CF', '+', '+', '_', '_', '\u00A6', '\u00CC', '_', '\u00D3', '\u00DF', '\u00D4', '\u00D2', '\u00F5', '\u00D5', '\u00B5', '\u00FE',
+    '\u00DE', '\u00DA', '\u00DB', '\u00D9', '\u00FD', '\u00DD', '\u00AF', '\u00B4', '\u00AD', '\u00B1', '_', '\u00BE', '\u00B6', '\u00A7',
+    '\u00F7', '\u00B8', '\u00B0', '\u00A8', '\u00B7', '\u00B9', '\u00B3', '\u00B2', '_', ' '];
+  for (i = 0; i < str.length; i++) {
+    charCode = str.charCodeAt(i) & 0xFF;
+    if (charCode > 127)
+      out += extendedASCII[charCode - 128];
+    else
+      out += String.fromCharCode(charCode);
   }
   return out;
 }
 
-Promise.resolve = resolve;
-function resolve(value) {
-  if (value instanceof this) {
-    return value;
-  }
-  return handlers.resolve(new this(INTERNAL), value);
+function decodeUTF8(string) {
+  return decodeURIComponent(escape(string));
 }
 
-Promise.reject = reject;
-function reject(reason) {
-  var promise = new this(INTERNAL);
-  return handlers.reject(promise, reason);
+function getString(bytes) {
+  var i, str = "";
+  for (i = 0; i < bytes.length; i++)
+    str += String.fromCharCode(bytes[i]);
+  return str;
 }
 
-Promise.all = all;
-function all(iterable) {
-  var self = this;
-  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
-    return this.reject(new TypeError('must be an array'));
+function getDate(timeRaw) {
+  var date = (timeRaw & 0xffff0000) >> 16, time = timeRaw & 0x0000ffff;
+  try {
+    return new Date(1980 + ((date & 0xFE00) >> 9), ((date & 0x01E0) >> 5) - 1, date & 0x001F, (time & 0xF800) >> 11, (time & 0x07E0) >> 5,
+      (time & 0x001F) * 2, 0);
+  } catch (e) {
+  }
+}
+
+function readCommonHeader(entry, data, index, centralDirectory, onerror) {
+  entry.version = data.view.getUint16(index, true);
+  entry.bitFlag = data.view.getUint16(index + 2, true);
+  entry.compressionMethod = data.view.getUint16(index + 4, true);
+  entry.lastModDateRaw = data.view.getUint32(index + 6, true);
+  entry.lastModDate = getDate(entry.lastModDateRaw);
+  if ((entry.bitFlag & 0x01) === 0x01) {
+    onerror(ERR_ENCRYPTED);
+    return;
+  }
+  if (centralDirectory || (entry.bitFlag & 0x0008) != 0x0008) {
+    entry.crc32 = data.view.getUint32(index + 10, true);
+    entry.compressedSize = data.view.getUint32(index + 14, true);
+    entry.uncompressedSize = data.view.getUint32(index + 18, true);
+  }
+  if (entry.compressedSize === 0xFFFFFFFF || entry.uncompressedSize === 0xFFFFFFFF) {
+    onerror(ERR_ZIP64);
+    return;
+  }
+  entry.filenameLength = data.view.getUint16(index + 22, true);
+  entry.extraFieldLength = data.view.getUint16(index + 24, true);
+}
+
+function createZipReader(reader, callback, onerror) {
+  var inflateSN = 0;
+
+  function Entry() {
   }
 
-  var len = iterable.length;
-  var called = false;
-  if (!len) {
-    return this.resolve([]);
-  }
+  Entry.prototype.getData = function(writer, onend, onprogress, checkCrc32) {
+    var that = this;
 
-  var values = new Array(len);
-  var resolved = 0;
-  var i = -1;
-  var promise = new this(INTERNAL);
+    function testCrc32(crc32) {
+      var dataCrc32 = getDataHelper(4);
+      dataCrc32.view.setUint32(0, crc32);
+      return that.crc32 == dataCrc32.view.getUint32(0);
+    }
 
-  while (++i < len) {
-    allResolver(iterable[i], i);
-  }
-  return promise;
-  function allResolver(value, i) {
-    self.resolve(value).then(resolveFromAll, function (error) {
-      if (!called) {
-        called = true;
-        handlers.reject(promise, error);
+    function getWriterData(uncompressedSize, crc32) {
+      if (checkCrc32 && !testCrc32(crc32))
+        onerror(ERR_CRC);
+      else
+        writer.getData(function(data) {
+          onend(data);
+        });
+    }
+
+    function onreaderror(err) {
+      onerror(err || ERR_READ_DATA);
+    }
+
+    function onwriteerror(err) {
+      onerror(err || ERR_WRITE_DATA);
+    }
+
+    reader.readUint8Array(that.offset, 30, function(bytes) {
+      var data = getDataHelper(bytes.length, bytes), dataOffset;
+      if (data.view.getUint32(0) != 0x504b0304) {
+        onerror(ERR_BAD_FORMAT);
+        return;
       }
+      readCommonHeader(that, data, 4, false, onerror);
+      dataOffset = that.offset + 30 + that.filenameLength + that.extraFieldLength;
+      writer.init(function() {
+        if (that.compressionMethod === 0)
+          copy(that._worker, inflateSN++, reader, writer, dataOffset, that.compressedSize, checkCrc32, getWriterData, onprogress, onreaderror, onwriteerror);
+        else
+          inflate(that._worker, inflateSN++, reader, writer, dataOffset, that.compressedSize, checkCrc32, getWriterData, onprogress, onreaderror, onwriteerror);
+      }, onwriteerror);
+    }, onreaderror);
+  };
+
+  function seekEOCDR(eocdrCallback) {
+    // "End of central directory record" is the last part of a zip archive, and is at least 22 bytes long.
+    // Zip file comment is the last part of EOCDR and has max length of 64KB,
+    // so we only have to search the last 64K + 22 bytes of a archive for EOCDR signature (0x06054b50).
+    var EOCDR_MIN = 22;
+    if (reader.size < EOCDR_MIN) {
+      onerror(ERR_BAD_FORMAT);
+      return;
+    }
+    var ZIP_COMMENT_MAX = 256 * 256, EOCDR_MAX = EOCDR_MIN + ZIP_COMMENT_MAX;
+
+    // In most cases, the EOCDR is EOCDR_MIN bytes long
+    doSeek(EOCDR_MIN, function() {
+      // If not found, try within EOCDR_MAX bytes
+      doSeek(Math.min(EOCDR_MAX, reader.size), function() {
+        onerror(ERR_BAD_FORMAT);
+      });
     });
-    function resolveFromAll(outValue) {
-      values[i] = outValue;
-      if (++resolved === len && !called) {
-        called = true;
-        handlers.resolve(promise, values);
-      }
-    }
-  }
-}
 
-Promise.race = race;
-function race(iterable) {
-  var self = this;
-  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
-    return this.reject(new TypeError('must be an array'));
-  }
-
-  var len = iterable.length;
-  var called = false;
-  if (!len) {
-    return this.resolve([]);
-  }
-
-  var i = -1;
-  var promise = new this(INTERNAL);
-
-  while (++i < len) {
-    resolver(iterable[i]);
-  }
-  return promise;
-  function resolver(value) {
-    self.resolve(value).then(function (response) {
-      if (!called) {
-        called = true;
-        handlers.resolve(promise, response);
-      }
-    }, function (error) {
-      if (!called) {
-        called = true;
-        handlers.reject(promise, error);
-      }
-    });
-  }
-}
-
-},{"immediate":38}],79:[function(_dereq_,module,exports){
-// Top level file is just a mixin of submodules & constants
-'use strict';
-
-var assign    = _dereq_('./lib/utils/common').assign;
-
-var deflate   = _dereq_('./lib/deflate');
-var inflate   = _dereq_('./lib/inflate');
-var constants = _dereq_('./lib/zlib/constants');
-
-var pako = {};
-
-assign(pako, deflate, inflate, constants);
-
-module.exports = pako;
-
-},{"./lib/deflate":80,"./lib/inflate":81,"./lib/utils/common":82,"./lib/zlib/constants":85}],80:[function(_dereq_,module,exports){
-'use strict';
-
-
-var zlib_deflate = _dereq_('./zlib/deflate');
-var utils        = _dereq_('./utils/common');
-var strings      = _dereq_('./utils/strings');
-var msg          = _dereq_('./zlib/messages');
-var ZStream      = _dereq_('./zlib/zstream');
-
-var toString = Object.prototype.toString;
-
-/* Public constants ==========================================================*/
-/* ===========================================================================*/
-
-var Z_NO_FLUSH      = 0;
-var Z_FINISH        = 4;
-
-var Z_OK            = 0;
-var Z_STREAM_END    = 1;
-var Z_SYNC_FLUSH    = 2;
-
-var Z_DEFAULT_COMPRESSION = -1;
-
-var Z_DEFAULT_STRATEGY    = 0;
-
-var Z_DEFLATED  = 8;
-
-/* ===========================================================================*/
-
-
-/**
- * class Deflate
- *
- * Generic JS-style wrapper for zlib calls. If you don't need
- * streaming behaviour - use more simple functions: [[deflate]],
- * [[deflateRaw]] and [[gzip]].
- **/
-
-/* internal
- * Deflate.chunks -> Array
- *
- * Chunks of output data, if [[Deflate#onData]] not overridden.
- **/
-
-/**
- * Deflate.result -> Uint8Array|Array
- *
- * Compressed result, generated by default [[Deflate#onData]]
- * and [[Deflate#onEnd]] handlers. Filled after you push last chunk
- * (call [[Deflate#push]] with `Z_FINISH` / `true` param)  or if you
- * push a chunk with explicit flush (call [[Deflate#push]] with
- * `Z_SYNC_FLUSH` param).
- **/
-
-/**
- * Deflate.err -> Number
- *
- * Error code after deflate finished. 0 (Z_OK) on success.
- * You will not need it in real life, because deflate errors
- * are possible only on wrong options or bad `onData` / `onEnd`
- * custom handlers.
- **/
-
-/**
- * Deflate.msg -> String
- *
- * Error message, if [[Deflate.err]] != 0
- **/
-
-
-/**
- * new Deflate(options)
- * - options (Object): zlib deflate options.
- *
- * Creates new deflator instance with specified params. Throws exception
- * on bad params. Supported options:
- *
- * - `level`
- * - `windowBits`
- * - `memLevel`
- * - `strategy`
- * - `dictionary`
- *
- * [http://zlib.net/manual.html#Advanced](http://zlib.net/manual.html#Advanced)
- * for more information on these.
- *
- * Additional options, for internal needs:
- *
- * - `chunkSize` - size of generated data chunks (16K by default)
- * - `raw` (Boolean) - do raw deflate
- * - `gzip` (Boolean) - create gzip wrapper
- * - `to` (String) - if equal to 'string', then result will be "binary string"
- *    (each char code [0..255])
- * - `header` (Object) - custom header for gzip
- *   - `text` (Boolean) - true if compressed data believed to be text
- *   - `time` (Number) - modification time, unix timestamp
- *   - `os` (Number) - operation system code
- *   - `extra` (Array) - array of bytes with extra data (max 65536)
- *   - `name` (String) - file name (binary string)
- *   - `comment` (String) - comment (binary string)
- *   - `hcrc` (Boolean) - true if header crc should be added
- *
- * ##### Example:
- *
- * ```javascript
- * var pako = require('pako')
- *   , chunk1 = Uint8Array([1,2,3,4,5,6,7,8,9])
- *   , chunk2 = Uint8Array([10,11,12,13,14,15,16,17,18,19]);
- *
- * var deflate = new pako.Deflate({ level: 3});
- *
- * deflate.push(chunk1, false);
- * deflate.push(chunk2, true);  // true -> last chunk
- *
- * if (deflate.err) { throw new Error(deflate.err); }
- *
- * console.log(deflate.result);
- * ```
- **/
-function Deflate(options) {
-  if (!(this instanceof Deflate)) return new Deflate(options);
-
-  this.options = utils.assign({
-    level: Z_DEFAULT_COMPRESSION,
-    method: Z_DEFLATED,
-    chunkSize: 16384,
-    windowBits: 15,
-    memLevel: 8,
-    strategy: Z_DEFAULT_STRATEGY,
-    to: ''
-  }, options || {});
-
-  var opt = this.options;
-
-  if (opt.raw && (opt.windowBits > 0)) {
-    opt.windowBits = -opt.windowBits;
-  }
-
-  else if (opt.gzip && (opt.windowBits > 0) && (opt.windowBits < 16)) {
-    opt.windowBits += 16;
-  }
-
-  this.err    = 0;      // error code, if happens (0 = Z_OK)
-  this.msg    = '';     // error message
-  this.ended  = false;  // used to avoid multiple onEnd() calls
-  this.chunks = [];     // chunks of compressed data
-
-  this.strm = new ZStream();
-  this.strm.avail_out = 0;
-
-  var status = zlib_deflate.deflateInit2(
-    this.strm,
-    opt.level,
-    opt.method,
-    opt.windowBits,
-    opt.memLevel,
-    opt.strategy
-  );
-
-  if (status !== Z_OK) {
-    throw new Error(msg[status]);
-  }
-
-  if (opt.header) {
-    zlib_deflate.deflateSetHeader(this.strm, opt.header);
-  }
-
-  if (opt.dictionary) {
-    var dict;
-    // Convert data if needed
-    if (typeof opt.dictionary === 'string') {
-      // If we need to compress text, change encoding to utf8.
-      dict = strings.string2buf(opt.dictionary);
-    } else if (toString.call(opt.dictionary) === '[object ArrayBuffer]') {
-      dict = new Uint8Array(opt.dictionary);
-    } else {
-      dict = opt.dictionary;
-    }
-
-    status = zlib_deflate.deflateSetDictionary(this.strm, dict);
-
-    if (status !== Z_OK) {
-      throw new Error(msg[status]);
-    }
-
-    this._dict_set = true;
-  }
-}
-
-/**
- * Deflate#push(data[, mode]) -> Boolean
- * - data (Uint8Array|Array|ArrayBuffer|String): input data. Strings will be
- *   converted to utf8 byte sequence.
- * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
- *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` means Z_FINISH.
- *
- * Sends input data to deflate pipe, generating [[Deflate#onData]] calls with
- * new compressed chunks. Returns `true` on success. The last data block must have
- * mode Z_FINISH (or `true`). That will flush internal pending buffers and call
- * [[Deflate#onEnd]]. For interim explicit flushes (without ending the stream) you
- * can use mode Z_SYNC_FLUSH, keeping the compression context.
- *
- * On fail call [[Deflate#onEnd]] with error code and return false.
- *
- * We strongly recommend to use `Uint8Array` on input for best speed (output
- * array format is detected automatically). Also, don't skip last param and always
- * use the same type in your code (boolean or number). That will improve JS speed.
- *
- * For regular `Array`-s make sure all elements are [0..255].
- *
- * ##### Example
- *
- * ```javascript
- * push(chunk, false); // push one of data chunks
- * ...
- * push(chunk, true);  // push last chunk
- * ```
- **/
-Deflate.prototype.push = function (data, mode) {
-  var strm = this.strm;
-  var chunkSize = this.options.chunkSize;
-  var status, _mode;
-
-  if (this.ended) { return false; }
-
-  _mode = (mode === ~~mode) ? mode : ((mode === true) ? Z_FINISH : Z_NO_FLUSH);
-
-  // Convert data if needed
-  if (typeof data === 'string') {
-    // If we need to compress text, change encoding to utf8.
-    strm.input = strings.string2buf(data);
-  } else if (toString.call(data) === '[object ArrayBuffer]') {
-    strm.input = new Uint8Array(data);
-  } else {
-    strm.input = data;
-  }
-
-  strm.next_in = 0;
-  strm.avail_in = strm.input.length;
-
-  do {
-    if (strm.avail_out === 0) {
-      strm.output = new utils.Buf8(chunkSize);
-      strm.next_out = 0;
-      strm.avail_out = chunkSize;
-    }
-    status = zlib_deflate.deflate(strm, _mode);    /* no bad return value */
-
-    if (status !== Z_STREAM_END && status !== Z_OK) {
-      this.onEnd(status);
-      this.ended = true;
-      return false;
-    }
-    if (strm.avail_out === 0 || (strm.avail_in === 0 && (_mode === Z_FINISH || _mode === Z_SYNC_FLUSH))) {
-      if (this.options.to === 'string') {
-        this.onData(strings.buf2binstring(utils.shrinkBuf(strm.output, strm.next_out)));
-      } else {
-        this.onData(utils.shrinkBuf(strm.output, strm.next_out));
-      }
-    }
-  } while ((strm.avail_in > 0 || strm.avail_out === 0) && status !== Z_STREAM_END);
-
-  // Finalize on the last chunk.
-  if (_mode === Z_FINISH) {
-    status = zlib_deflate.deflateEnd(this.strm);
-    this.onEnd(status);
-    this.ended = true;
-    return status === Z_OK;
-  }
-
-  // callback interim results if Z_SYNC_FLUSH.
-  if (_mode === Z_SYNC_FLUSH) {
-    this.onEnd(Z_OK);
-    strm.avail_out = 0;
-    return true;
-  }
-
-  return true;
-};
-
-
-/**
- * Deflate#onData(chunk) -> Void
- * - chunk (Uint8Array|Array|String): output data. Type of array depends
- *   on js engine support. When string output requested, each chunk
- *   will be string.
- *
- * By default, stores data blocks in `chunks[]` property and glue
- * those in `onEnd`. Override this handler, if you need another behaviour.
- **/
-Deflate.prototype.onData = function (chunk) {
-  this.chunks.push(chunk);
-};
-
-
-/**
- * Deflate#onEnd(status) -> Void
- * - status (Number): deflate status. 0 (Z_OK) on success,
- *   other if not.
- *
- * Called once after you tell deflate that the input stream is
- * complete (Z_FINISH) or should be flushed (Z_SYNC_FLUSH)
- * or if an error happened. By default - join collected chunks,
- * free memory and fill `results` / `err` properties.
- **/
-Deflate.prototype.onEnd = function (status) {
-  // On success - join
-  if (status === Z_OK) {
-    if (this.options.to === 'string') {
-      this.result = this.chunks.join('');
-    } else {
-      this.result = utils.flattenChunks(this.chunks);
-    }
-  }
-  this.chunks = [];
-  this.err = status;
-  this.msg = this.strm.msg;
-};
-
-
-/**
- * deflate(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to compress.
- * - options (Object): zlib deflate options.
- *
- * Compress `data` with deflate algorithm and `options`.
- *
- * Supported options are:
- *
- * - level
- * - windowBits
- * - memLevel
- * - strategy
- * - dictionary
- *
- * [http://zlib.net/manual.html#Advanced](http://zlib.net/manual.html#Advanced)
- * for more information on these.
- *
- * Sugar (options):
- *
- * - `raw` (Boolean) - say that we work with raw stream, if you don't wish to specify
- *   negative windowBits implicitly.
- * - `to` (String) - if equal to 'string', then result will be "binary string"
- *    (each char code [0..255])
- *
- * ##### Example:
- *
- * ```javascript
- * var pako = require('pako')
- *   , data = Uint8Array([1,2,3,4,5,6,7,8,9]);
- *
- * console.log(pako.deflate(data));
- * ```
- **/
-function deflate(input, options) {
-  var deflator = new Deflate(options);
-
-  deflator.push(input, true);
-
-  // That will never happens, if you don't cheat with options :)
-  if (deflator.err) { throw deflator.msg || msg[deflator.err]; }
-
-  return deflator.result;
-}
-
-
-/**
- * deflateRaw(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to compress.
- * - options (Object): zlib deflate options.
- *
- * The same as [[deflate]], but creates raw data, without wrapper
- * (header and adler32 crc).
- **/
-function deflateRaw(input, options) {
-  options = options || {};
-  options.raw = true;
-  return deflate(input, options);
-}
-
-
-/**
- * gzip(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to compress.
- * - options (Object): zlib deflate options.
- *
- * The same as [[deflate]], but create gzip wrapper instead of
- * deflate one.
- **/
-function gzip(input, options) {
-  options = options || {};
-  options.gzip = true;
-  return deflate(input, options);
-}
-
-
-exports.Deflate = Deflate;
-exports.deflate = deflate;
-exports.deflateRaw = deflateRaw;
-exports.gzip = gzip;
-
-},{"./utils/common":82,"./utils/strings":83,"./zlib/deflate":87,"./zlib/messages":92,"./zlib/zstream":94}],81:[function(_dereq_,module,exports){
-'use strict';
-
-
-var zlib_inflate = _dereq_('./zlib/inflate');
-var utils        = _dereq_('./utils/common');
-var strings      = _dereq_('./utils/strings');
-var c            = _dereq_('./zlib/constants');
-var msg          = _dereq_('./zlib/messages');
-var ZStream      = _dereq_('./zlib/zstream');
-var GZheader     = _dereq_('./zlib/gzheader');
-
-var toString = Object.prototype.toString;
-
-/**
- * class Inflate
- *
- * Generic JS-style wrapper for zlib calls. If you don't need
- * streaming behaviour - use more simple functions: [[inflate]]
- * and [[inflateRaw]].
- **/
-
-/* internal
- * inflate.chunks -> Array
- *
- * Chunks of output data, if [[Inflate#onData]] not overridden.
- **/
-
-/**
- * Inflate.result -> Uint8Array|Array|String
- *
- * Uncompressed result, generated by default [[Inflate#onData]]
- * and [[Inflate#onEnd]] handlers. Filled after you push last chunk
- * (call [[Inflate#push]] with `Z_FINISH` / `true` param) or if you
- * push a chunk with explicit flush (call [[Inflate#push]] with
- * `Z_SYNC_FLUSH` param).
- **/
-
-/**
- * Inflate.err -> Number
- *
- * Error code after inflate finished. 0 (Z_OK) on success.
- * Should be checked if broken data possible.
- **/
-
-/**
- * Inflate.msg -> String
- *
- * Error message, if [[Inflate.err]] != 0
- **/
-
-
-/**
- * new Inflate(options)
- * - options (Object): zlib inflate options.
- *
- * Creates new inflator instance with specified params. Throws exception
- * on bad params. Supported options:
- *
- * - `windowBits`
- * - `dictionary`
- *
- * [http://zlib.net/manual.html#Advanced](http://zlib.net/manual.html#Advanced)
- * for more information on these.
- *
- * Additional options, for internal needs:
- *
- * - `chunkSize` - size of generated data chunks (16K by default)
- * - `raw` (Boolean) - do raw inflate
- * - `to` (String) - if equal to 'string', then result will be converted
- *   from utf8 to utf16 (javascript) string. When string output requested,
- *   chunk length can differ from `chunkSize`, depending on content.
- *
- * By default, when no options set, autodetect deflate/gzip data format via
- * wrapper header.
- *
- * ##### Example:
- *
- * ```javascript
- * var pako = require('pako')
- *   , chunk1 = Uint8Array([1,2,3,4,5,6,7,8,9])
- *   , chunk2 = Uint8Array([10,11,12,13,14,15,16,17,18,19]);
- *
- * var inflate = new pako.Inflate({ level: 3});
- *
- * inflate.push(chunk1, false);
- * inflate.push(chunk2, true);  // true -> last chunk
- *
- * if (inflate.err) { throw new Error(inflate.err); }
- *
- * console.log(inflate.result);
- * ```
- **/
-function Inflate(options) {
-  if (!(this instanceof Inflate)) return new Inflate(options);
-
-  this.options = utils.assign({
-    chunkSize: 16384,
-    windowBits: 0,
-    to: ''
-  }, options || {});
-
-  var opt = this.options;
-
-  // Force window size for `raw` data, if not set directly,
-  // because we have no header for autodetect.
-  if (opt.raw && (opt.windowBits >= 0) && (opt.windowBits < 16)) {
-    opt.windowBits = -opt.windowBits;
-    if (opt.windowBits === 0) { opt.windowBits = -15; }
-  }
-
-  // If `windowBits` not defined (and mode not raw) - set autodetect flag for gzip/deflate
-  if ((opt.windowBits >= 0) && (opt.windowBits < 16) &&
-      !(options && options.windowBits)) {
-    opt.windowBits += 32;
-  }
-
-  // Gzip header has no info about windows size, we can do autodetect only
-  // for deflate. So, if window size not set, force it to max when gzip possible
-  if ((opt.windowBits > 15) && (opt.windowBits < 48)) {
-    // bit 3 (16) -> gzipped data
-    // bit 4 (32) -> autodetect gzip/deflate
-    if ((opt.windowBits & 15) === 0) {
-      opt.windowBits |= 15;
-    }
-  }
-
-  this.err    = 0;      // error code, if happens (0 = Z_OK)
-  this.msg    = '';     // error message
-  this.ended  = false;  // used to avoid multiple onEnd() calls
-  this.chunks = [];     // chunks of compressed data
-
-  this.strm   = new ZStream();
-  this.strm.avail_out = 0;
-
-  var status  = zlib_inflate.inflateInit2(
-    this.strm,
-    opt.windowBits
-  );
-
-  if (status !== c.Z_OK) {
-    throw new Error(msg[status]);
-  }
-
-  this.header = new GZheader();
-
-  zlib_inflate.inflateGetHeader(this.strm, this.header);
-}
-
-/**
- * Inflate#push(data[, mode]) -> Boolean
- * - data (Uint8Array|Array|ArrayBuffer|String): input data
- * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
- *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` means Z_FINISH.
- *
- * Sends input data to inflate pipe, generating [[Inflate#onData]] calls with
- * new output chunks. Returns `true` on success. The last data block must have
- * mode Z_FINISH (or `true`). That will flush internal pending buffers and call
- * [[Inflate#onEnd]]. For interim explicit flushes (without ending the stream) you
- * can use mode Z_SYNC_FLUSH, keeping the decompression context.
- *
- * On fail call [[Inflate#onEnd]] with error code and return false.
- *
- * We strongly recommend to use `Uint8Array` on input for best speed (output
- * format is detected automatically). Also, don't skip last param and always
- * use the same type in your code (boolean or number). That will improve JS speed.
- *
- * For regular `Array`-s make sure all elements are [0..255].
- *
- * ##### Example
- *
- * ```javascript
- * push(chunk, false); // push one of data chunks
- * ...
- * push(chunk, true);  // push last chunk
- * ```
- **/
-Inflate.prototype.push = function (data, mode) {
-  var strm = this.strm;
-  var chunkSize = this.options.chunkSize;
-  var dictionary = this.options.dictionary;
-  var status, _mode;
-  var next_out_utf8, tail, utf8str;
-  var dict;
-
-  // Flag to properly process Z_BUF_ERROR on testing inflate call
-  // when we check that all output data was flushed.
-  var allowBufError = false;
-
-  if (this.ended) { return false; }
-  _mode = (mode === ~~mode) ? mode : ((mode === true) ? c.Z_FINISH : c.Z_NO_FLUSH);
-
-  // Convert data if needed
-  if (typeof data === 'string') {
-    // Only binary strings can be decompressed on practice
-    strm.input = strings.binstring2buf(data);
-  } else if (toString.call(data) === '[object ArrayBuffer]') {
-    strm.input = new Uint8Array(data);
-  } else {
-    strm.input = data;
-  }
-
-  strm.next_in = 0;
-  strm.avail_in = strm.input.length;
-
-  do {
-    if (strm.avail_out === 0) {
-      strm.output = new utils.Buf8(chunkSize);
-      strm.next_out = 0;
-      strm.avail_out = chunkSize;
-    }
-
-    status = zlib_inflate.inflate(strm, c.Z_NO_FLUSH);    /* no bad return value */
-
-    if (status === c.Z_NEED_DICT && dictionary) {
-      // Convert data if needed
-      if (typeof dictionary === 'string') {
-        dict = strings.string2buf(dictionary);
-      } else if (toString.call(dictionary) === '[object ArrayBuffer]') {
-        dict = new Uint8Array(dictionary);
-      } else {
-        dict = dictionary;
-      }
-
-      status = zlib_inflate.inflateSetDictionary(this.strm, dict);
-
-    }
-
-    if (status === c.Z_BUF_ERROR && allowBufError === true) {
-      status = c.Z_OK;
-      allowBufError = false;
-    }
-
-    if (status !== c.Z_STREAM_END && status !== c.Z_OK) {
-      this.onEnd(status);
-      this.ended = true;
-      return false;
-    }
-
-    if (strm.next_out) {
-      if (strm.avail_out === 0 || status === c.Z_STREAM_END || (strm.avail_in === 0 && (_mode === c.Z_FINISH || _mode === c.Z_SYNC_FLUSH))) {
-
-        if (this.options.to === 'string') {
-
-          next_out_utf8 = strings.utf8border(strm.output, strm.next_out);
-
-          tail = strm.next_out - next_out_utf8;
-          utf8str = strings.buf2string(strm.output, next_out_utf8);
-
-          // move tail
-          strm.next_out = tail;
-          strm.avail_out = chunkSize - tail;
-          if (tail) { utils.arraySet(strm.output, strm.output, next_out_utf8, tail, 0); }
-
-          this.onData(utf8str);
-
-        } else {
-          this.onData(utils.shrinkBuf(strm.output, strm.next_out));
+    // seek last length bytes of file for EOCDR
+    function doSeek(length, eocdrNotFoundCallback) {
+      reader.readUint8Array(reader.size - length, length, function(bytes) {
+        for (var i = bytes.length - EOCDR_MIN; i >= 0; i--) {
+          if (bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 0x05 && bytes[i + 3] === 0x06) {
+            eocdrCallback(new DataView(bytes.buffer, i, EOCDR_MIN));
+            return;
+          }
         }
+        eocdrNotFoundCallback();
+      }, function() {
+        onerror(ERR_READ);
+      });
+    }
+  }
+
+  var zipReader = {
+    getEntries: function(callback) {
+      var worker = this._worker;
+      // look for End of central directory record
+      seekEOCDR(function(dataView) {
+        var datalength, fileslength;
+        datalength = dataView.getUint32(16, true);
+        fileslength = dataView.getUint16(8, true);
+        if (datalength < 0 || datalength >= reader.size) {
+          onerror(ERR_BAD_FORMAT);
+          return;
+        }
+        reader.readUint8Array(datalength, reader.size - datalength, function(bytes) {
+          var i, index = 0, entries = [], entry, filename, comment, data = getDataHelper(bytes.length, bytes);
+          for (i = 0; i < fileslength; i++) {
+            entry = new Entry();
+            entry._worker = worker;
+            if (data.view.getUint32(index) != 0x504b0102) {
+              onerror(ERR_BAD_FORMAT);
+              return;
+            }
+            readCommonHeader(entry, data, index + 6, true, onerror);
+            entry.commentLength = data.view.getUint16(index + 32, true);
+            entry.directory = ((data.view.getUint8(index + 38) & 0x10) == 0x10);
+            entry.offset = data.view.getUint32(index + 42, true);
+            filename = getString(data.array.subarray(index + 46, index + 46 + entry.filenameLength));
+            entry.filename = ((entry.bitFlag & 0x0800) === 0x0800) ? decodeUTF8(filename) : decodeASCII(filename);
+            if (!entry.directory && entry.filename.charAt(entry.filename.length - 1) == "/")
+              entry.directory = true;
+            comment = getString(data.array.subarray(index + 46 + entry.filenameLength + entry.extraFieldLength, index + 46
+              + entry.filenameLength + entry.extraFieldLength + entry.commentLength));
+            entry.comment = ((entry.bitFlag & 0x0800) === 0x0800) ? decodeUTF8(comment) : decodeASCII(comment);
+            entries.push(entry);
+            index += 46 + entry.filenameLength + entry.extraFieldLength + entry.commentLength;
+          }
+          callback(entries);
+        }, function() {
+          onerror(ERR_READ);
+        });
+      });
+    },
+    close: function(callback) {
+      if (this._worker) {
+        this._worker.terminate();
+        this._worker = null;
+      }
+      if (callback)
+        callback();
+    },
+    _worker: null
+  };
+
+  if (!zip.useWebWorkers)
+    callback(zipReader);
+  else {
+    createWorker('inflater',
+      function(worker) {
+        zipReader._worker = worker;
+        callback(zipReader);
+      },
+      function(err) {
+        onerror(err);
+      }
+    );
+  }
+}
+
+// ZipWriter
+
+function encodeUTF8(string) {
+  return unescape(encodeURIComponent(string));
+}
+
+function getBytes(str) {
+  var i, array = [];
+  for (i = 0; i < str.length; i++)
+    array.push(str.charCodeAt(i));
+  return array;
+}
+
+function createZipWriter(writer, callback, onerror, dontDeflate) {
+  var files = {}, filenames = [], datalength = 0;
+  var deflateSN = 0;
+
+  function onwriteerror(err) {
+    onerror(err || ERR_WRITE);
+  }
+
+  function onreaderror(err) {
+    onerror(err || ERR_READ_DATA);
+  }
+
+  var zipWriter = {
+    add: function(name, reader, onend, onprogress, options) {
+      var header, filename, date;
+      var worker = this._worker;
+
+      function writeHeader(callback) {
+        var data;
+        date = options.lastModDate || new Date();
+        header = getDataHelper(26);
+        files[name] = {
+          headerArray: header.array,
+          directory: options.directory,
+          filename: filename,
+          offset: datalength,
+          comment: getBytes(encodeUTF8(options.comment || ''))
+        };
+        header.view.setUint32(0, 0x14000808);
+        if (options.version)
+          header.view.setUint8(0, options.version);
+        if (!dontDeflate && options.level !== 0 && !options.directory)
+          header.view.setUint16(4, 0x0800);
+        header.view.setUint16(6, (((date.getHours() << 6) | date.getMinutes()) << 5) | date.getSeconds() / 2, true);
+        header.view.setUint16(8, ((((date.getFullYear() - 1980) << 4) | (date.getMonth() + 1)) << 5) | date.getDate(), true);
+        header.view.setUint16(22, filename.length, true);
+        data = getDataHelper(30 + filename.length);
+        data.view.setUint32(0, 0x504b0304);
+        data.array.set(header.array, 4);
+        data.array.set(filename, 30);
+        datalength += data.array.length;
+        writer.writeUint8Array(data.array, callback, onwriteerror);
+      }
+
+      function writeFooter(compressedLength, crc32) {
+        var footer = getDataHelper(16);
+        datalength += compressedLength || 0;
+        footer.view.setUint32(0, 0x504b0708);
+        if (typeof crc32 !== 'undefined') {
+          header.view.setUint32(10, crc32, true);
+          footer.view.setUint32(4, crc32, true);
+        }
+        if (reader) {
+          footer.view.setUint32(8, compressedLength, true);
+          header.view.setUint32(14, compressedLength, true);
+          footer.view.setUint32(12, reader.size, true);
+          header.view.setUint32(18, reader.size, true);
+        }
+        writer.writeUint8Array(footer.array, function() {
+          datalength += 16;
+          onend();
+        }, onwriteerror);
+      }
+
+      function writeFile() {
+        options = options || {};
+        name = name.trim();
+        if (options.directory && name.charAt(name.length - 1) != "/")
+          name += "/";
+        if (files.hasOwnProperty(name)) {
+          onerror(ERR_DUPLICATED_NAME);
+          return;
+        }
+        filename = getBytes(encodeUTF8(name));
+        filenames.push(name);
+        writeHeader(function() {
+          if (reader)
+            if (dontDeflate || options.level === 0)
+              copy(worker, deflateSN++, reader, writer, 0, reader.size, true, writeFooter, onprogress, onreaderror, onwriteerror);
+            else
+              deflate(worker, deflateSN++, reader, writer, options.level, writeFooter, onprogress, onreaderror, onwriteerror);
+          else
+            writeFooter();
+        }, onwriteerror);
+      }
+
+      if (reader)
+        reader.init(writeFile, onreaderror);
+      else
+        writeFile();
+    },
+    close: function(callback) {
+      if (this._worker) {
+        this._worker.terminate();
+        this._worker = null;
+      }
+
+      var data, length = 0, index = 0, indexFilename, file;
+      for (indexFilename = 0; indexFilename < filenames.length; indexFilename++) {
+        file = files[filenames[indexFilename]];
+        length += 46 + file.filename.length + file.comment.length;
+      }
+      data = getDataHelper(length + 22);
+      for (indexFilename = 0; indexFilename < filenames.length; indexFilename++) {
+        file = files[filenames[indexFilename]];
+        data.view.setUint32(index, 0x504b0102);
+        data.view.setUint16(index + 4, 0x1400);
+        data.array.set(file.headerArray, index + 6);
+        data.view.setUint16(index + 32, file.comment.length, true);
+        if (file.directory)
+          data.view.setUint8(index + 38, 0x10);
+        data.view.setUint32(index + 42, file.offset, true);
+        data.array.set(file.filename, index + 46);
+        data.array.set(file.comment, index + 46 + file.filename.length);
+        index += 46 + file.filename.length + file.comment.length;
+      }
+      data.view.setUint32(index, 0x504b0506);
+      data.view.setUint16(index + 8, filenames.length, true);
+      data.view.setUint16(index + 10, filenames.length, true);
+      data.view.setUint32(index + 12, length, true);
+      data.view.setUint32(index + 16, datalength, true);
+      writer.writeUint8Array(data.array, function() {
+        writer.getData(callback);
+      }, onwriteerror);
+    },
+    _worker: null
+  };
+
+  if (!zip.useWebWorkers)
+    callback(zipWriter);
+  else {
+    createWorker('deflater',
+      function(worker) {
+        zipWriter._worker = worker;
+        callback(zipWriter);
+      },
+      function(err) {
+        onerror(err);
+      }
+    );
+  }
+}
+
+function resolveURLs(urls) {
+  var a = document.createElement('a');
+  return urls.map(function(url) {
+    a.href = url;
+    return a.href;
+  });
+}
+
+// var DEFAULT_WORKER_SCRIPTS = {
+//   deflater: ['z-worker.js', 'deflate.js'],
+//   inflater: ['z-worker.js', 'inflate.js']
+// };
+function createWorker(type, callback, onerror) {
+
+  if (zip.workerScripts !== null && zip.workerScriptsPath !== null) {
+    onerror(new Error('Either zip.workerScripts or zip.workerScriptsPath may be set, not both.'));
+    return;
+  }
+  var scripts;
+
+  // var worker = new Worker(blobBuilder(zWorkerCode));
+
+  var worker = new Worker(zWorker);
+
+  // record total consumed time by inflater/deflater/crc32 in this worker
+  worker.codecTime = worker.crcTime = 0;
+  worker.postMessage({
+    type: 'importScripts',
+    scripts: ['inflate.js']
+  });
+  worker.addEventListener('message', onmessage);
+  function onmessage(ev) {
+    var msg = ev.data;
+    if (msg.error) {
+      worker.terminate(); // should before onerror(), because onerror() may throw.
+      onerror(msg.error);
+      return;
+    }
+    if (msg.type === 'importScripts') {
+      worker.removeEventListener('message', onmessage);
+      worker.removeEventListener('error', errorHandler);
+      callback(worker);
+    }
+  }
+
+  // catch entry script loading error and other unhandled errors
+  worker.addEventListener('error', errorHandler);
+  function errorHandler(err) {
+    worker.terminate();
+    onerror(err);
+  }
+}
+
+function onerror_default(error) {
+  console.error(error);
+}
+
+var extendsOpts = {
+  Reader: Reader,
+  Writer: Writer,
+  BlobReader: BlobReader,
+  Data64URIReader: Data64URIReader,
+  TextReader: TextReader,
+  BlobWriter: BlobWriter,
+  Data64URIWriter: Data64URIWriter,
+  TextWriter: TextWriter,
+  createReader: function(reader, callback, onerror) {
+    onerror = onerror || onerror_default;
+
+    reader.init(function() {
+      createZipReader(reader, callback, onerror);
+    }, onerror);
+  },
+  createWriter: function(writer, callback, onerror, dontDeflate) {
+    onerror = onerror || onerror_default;
+    dontDeflate = !!dontDeflate;
+
+    writer.init(function() {
+      createZipWriter(writer, callback, onerror, dontDeflate);
+    }, onerror);
+  },
+  useWebWorkers: true,
+  /**
+   * Directory containing the default worker scripts (z-worker.js, deflate.js, and inflate.js), relative to current base url.
+   * E.g.: zip.workerScripts = './';
+   */
+  workerScriptsPath: null,
+  /**
+   * Advanced option to control which scripts are loaded in the Web worker. If this option is specified, then workerScriptsPath must not be set.
+   * workerScripts.deflater/workerScripts.inflater should be arrays of urls to scripts for deflater/inflater, respectively.
+   * Scripts in the array are executed in order, and the first one should be z-worker.js, which is used to start the worker.
+   * All urls are relative to current base url.
+   * E.g.:
+   * zip.workerScripts = {
+		 *   deflater: ['z-worker.js', 'deflate.js'],
+		 *   inflater: ['z-worker.js', 'inflate.js']
+		 * };
+   */
+  workerScripts: null
+};
+
+for (var i in extendsOpts) {
+  zip[i] = extendsOpts[i];
+}
+
+module.exports = zip;
+
+
+},{"./z-worker":54}],56:[function(require,module,exports){
+function toArray(arrayLikeObj) {
+  if (!arrayLikeObj) return [];
+
+  return Array.prototype.slice.call(arrayLikeObj);
+}
+
+function extend(destObject) {
+  var args = toArray(arguments);
+  var dest;
+
+  if (args.length == 1) {
+    return destObject;
+  }
+
+  args.shift();
+
+  // 从前往后遍历
+  for (var i = 0, l = args.length; i < l; i++) {
+    for (var key in args[i]) {
+      if (args[i].hasOwnProperty(key)) {
+        destObject[key] = args[i][key];
       }
     }
+  }
 
-    // When no more input data, we should check that internal inflate buffers
-    // are flushed. The only way to do it when avail_out = 0 - run one more
-    // inflate pass. But if output data not exists, inflate return Z_BUF_ERROR.
-    // Here we set flag to process this error properly.
+  return destObject;
+}
+
+function isTypeOf(something, type) {
+  if (!type) return false;
+
+  type = type.toLowerCase();
+
+  var realTypeString = Object.prototype.toString.call(something);
+
+  return realTypeString.toLowerCase() === '[object ' + type + ']';
+}
+
+function isArray(something) {
+  return isTypeOf(something, 'array');
+}
+
+function isFunction(something) {
+  return typeof something === 'function';
+}
+
+function isString(something) {
+  return typeof something === 'string';
+}
+
+function isDefined(something) {
+  return !(typeof something === 'undefined');
+}
+
+function isObject(something) {
+  return typeof something === 'object';
+}
+
+function isReg(something) {
+  return isTypeOf(something, 'regexp');
+}
+
+/**
+ *
+ * @param {Function/String/RegExp} rule
+ * @param {String}                 entryName
+ * @return {Boolean}
+ */
+function isThisWhatYouNeed(rule, entryName) {
+  return isFunction(rule) ? rule(entryName) :
+    isString(rule) ? entryName.toLowerCase().indexOf(rule.toLowerCase()) > -1 :
+      isReg(rule) ? rule.test(entryName.toLowerCase()) :
+        false;
+}
+
+/**
+ *
+ * @param str
+ * @param prefix
+ * @returns {boolean}
+ */
+function startWith(str, prefix) {
+  return str.indexOf(prefix) === 0;
+}
+
+function isResouces(attrValue) {
+  return startWith(attrValue, 'resourceId:');
+}
+
+function transKeyToMatchResourceMap(resourceId) {
+  return '@' + resourceId.replace('resourceId:0x', '').toUpperCase();
+}
+
+function castLogger(doWhat, fromWhen) {
+  console.log(doWhat + ' cost: ' + (Date.now() - fromWhen) + 'ms');
+}
+
+module.exports = {
+  toArray: toArray,
+  extend: extend,
+  startWith: startWith,
+  isResouces: isResouces,
+  transKeyToMatchResourceMap: transKeyToMatchResourceMap,
+  castLogger: castLogger,
+  isTypeOf: isTypeOf,
+  isArray: isArray,
+  isFunction: isFunction,
+  isString: isString,
+  isDefined: isDefined,
+  isObject: isObject,
+  isReg: isReg,
+  isThisWhatYouNeed: isThisWhatYouNeed
+};
+
+},{}],57:[function(require,module,exports){
+var zip = require('./lib/browser/zip');
+var blobToBuffer = require('./lib/browser/blob-to-buffer');
+var utils = require('./lib/utils');
+
+function Unzip(file/* or blob */) {
+  if (!(file instanceof Blob)) {
+    throw new Error('Invalid input, expect the first param to be a File/Blob.');
+  }
+
+  if (!(this instanceof Unzip)) return new Unzip(file);
+
+  this.file = file;
+}
+
+Unzip.prototype.destroy = function() {
+  this.file = null;
+};
+
+/**
+ *
+ * @param {Array<String>} whatYouNeed
+ * @param {Object} options       (Optional)
+ * @param {String} options.type  Currently, only support 'blob', by default it will return Buffers
+ * @param callback Will be called like callback(err, buffers)
+ */
+Unzip.prototype.getBuffer = function(whatYouNeed, options, callback) {
+  if (!utils.isArray(whatYouNeed) || !utils.isFunction(callback)) {
+    return callback(new Error('getBuffer: invalid param, expect first param to be an Array and the second param to be a callback function'));
+  }
+
+  if (utils.isFunction(options)) {
+    callback = options;
+    options = {};
+  }
+
+  whatYouNeed = whatYouNeed.map(function(rule) {
+    if (typeof rule === 'string') {
+      rule = rule.split('\u0000').join('');
+    }
+    return rule;
+  });
+
+  this.getEntries(function(error, entries) {
+    if (error) return callback(error);
+
+    var matchedEntries = {};
+
+    entries.forEach(function(entry) {
+      // Add regexp support
+      return whatYouNeed.some(function(entryName) {
+        if (utils.isThisWhatYouNeed(entryName, entry.filename)) {
+          matchedEntries[entryName] = entry;
+          return true;
+        }
+      });
+    });
+
+    iterator(matchedEntries, options, function(error, bufferArray) {
+      callback(error, bufferArray);
+    });
+  });
+};
+
+Unzip.prototype.getEntries = function(callback) {
+  zip.createReader(new zip.BlobReader(this.file), function(zipReader) {
+    zipReader.getEntries(function(entries) {
+      callback(null, entries);
+    });
+  });
+};
+
+Unzip.getEntryData = function(entry, callback) {
+  var writerType = 'blob';
+
+  var writer = new zip.BlobWriter();
+
+  entry.getData(writer, function(blob) {
+    callback(null, blob);
+  });
+};
+
+function iterator(entries, options, callback) {
+  var output = {};
+  var serialize = [];
+  var index = 0;
+
+  for (var entryName in entries) {
+    serialize.push({
+      name: entryName,
+      entry: entries[entryName]
+    });
+  }
+
+  if (!serialize.length) {
+    callback(null, {});
+  }
+
+  serialize.forEach(function(entryInfo) {
+    (function(name, entry) {
+      Unzip.getEntryData(entry, function(err, blob) {
+        if (err) return callback(err);
+
+        if (options.type === 'blob') {
+          add(name, blob);
+          if (index >= serialize.length) {
+            callback(null, output);
+          }
+        } else {
+          blobToBuffer(blob, function(error, buffer) {
+            if (error) {
+              console.error(error);
+              return callback(error);
+            }
+            add(name, buffer);
+
+            if (index >= serialize.length) {
+              callback(null, output);
+            }
+          });
+        }
+      });
+    })(entryInfo.name, entryInfo.entry);
+  });
+
+  function add(name, data) {
+    index++;
+    output[name] = data;
+  }
+}
+
+module.exports = Unzip;
+
+},{"./lib/browser/blob-to-buffer":53,"./lib/browser/zip":55,"./lib/utils":56}],58:[function(require,module,exports){
+/*
+ Copyright 2013 Daniel Wirtz <dcode@dcode.io>
+ Copyright 2009 The Closure Library Authors. All Rights Reserved.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS-IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
+/**
+ * @license long.js (c) 2013 Daniel Wirtz <dcode@dcode.io>
+ * Released under the Apache License, Version 2.0
+ * see: https://github.com/dcodeIO/long.js for details
+ */
+(function(global, factory) {
+
+    /* AMD */ if (typeof define === 'function' && define["amd"])
+        define([], factory);
+    /* CommonJS */ else if (typeof require === 'function' && typeof module === "object" && module && module["exports"])
+        module["exports"] = factory();
+    /* Global */ else
+        (global["dcodeIO"] = global["dcodeIO"] || {})["Long"] = factory();
+
+})(this, function() {
+    "use strict";
+
+    /**
+     * Constructs a 64 bit two's-complement integer, given its low and high 32 bit values as *signed* integers.
+     *  See the from* functions below for more convenient ways of constructing Longs.
+     * @exports Long
+     * @class A Long class for representing a 64 bit two's-complement integer value.
+     * @param {number} low The low (signed) 32 bits of the long
+     * @param {number} high The high (signed) 32 bits of the long
+     * @param {boolean=} unsigned Whether unsigned or not, defaults to `false` for signed
+     * @constructor
+     */
+    function Long(low, high, unsigned) {
+
+        /**
+         * The low 32 bits as a signed value.
+         * @type {number}
+         */
+        this.low = low | 0;
+
+        /**
+         * The high 32 bits as a signed value.
+         * @type {number}
+         */
+        this.high = high | 0;
+
+        /**
+         * Whether unsigned or not.
+         * @type {boolean}
+         */
+        this.unsigned = !!unsigned;
+    }
+
+    // The internal representation of a long is the two given signed, 32-bit values.
+    // We use 32-bit pieces because these are the size of integers on which
+    // Javascript performs bit-operations.  For operations like addition and
+    // multiplication, we split each number into 16 bit pieces, which can easily be
+    // multiplied within Javascript's floating-point representation without overflow
+    // or change in sign.
     //
-    // NOTE. Deflate does not return error in this case and does not needs such
-    // logic.
-    if (strm.avail_in === 0 && strm.avail_out === 0) {
-      allowBufError = true;
+    // In the algorithms below, we frequently reduce the negative case to the
+    // positive case by negating the input(s) and then post-processing the result.
+    // Note that we must ALWAYS check specially whether those values are MIN_VALUE
+    // (-2^63) because -MIN_VALUE == MIN_VALUE (since 2^63 cannot be represented as
+    // a positive number, it overflows back into a negative).  Not handling this
+    // case would often result in infinite recursion.
+    //
+    // Common constant values ZERO, ONE, NEG_ONE, etc. are defined below the from*
+    // methods on which they depend.
+
+    /**
+     * An indicator used to reliably determine if an object is a Long or not.
+     * @type {boolean}
+     * @const
+     * @private
+     */
+    Long.prototype.__isLong__;
+
+    Object.defineProperty(Long.prototype, "__isLong__", {
+        value: true,
+        enumerable: false,
+        configurable: false
+    });
+
+    /**
+     * @function
+     * @param {*} obj Object
+     * @returns {boolean}
+     * @inner
+     */
+    function isLong(obj) {
+        return (obj && obj["__isLong__"]) === true;
     }
 
-  } while ((strm.avail_in > 0 || strm.avail_out === 0) && status !== c.Z_STREAM_END);
+    /**
+     * Tests if the specified object is a Long.
+     * @function
+     * @param {*} obj Object
+     * @returns {boolean}
+     */
+    Long.isLong = isLong;
 
-  if (status === c.Z_STREAM_END) {
-    _mode = c.Z_FINISH;
-  }
+    /**
+     * A cache of the Long representations of small integer values.
+     * @type {!Object}
+     * @inner
+     */
+    var INT_CACHE = {};
 
-  // Finalize on the last chunk.
-  if (_mode === c.Z_FINISH) {
-    status = zlib_inflate.inflateEnd(this.strm);
-    this.onEnd(status);
-    this.ended = true;
-    return status === c.Z_OK;
-  }
+    /**
+     * A cache of the Long representations of small unsigned integer values.
+     * @type {!Object}
+     * @inner
+     */
+    var UINT_CACHE = {};
 
-  // callback interim results if Z_SYNC_FLUSH.
-  if (_mode === c.Z_SYNC_FLUSH) {
-    this.onEnd(c.Z_OK);
-    strm.avail_out = 0;
-    return true;
-  }
-
-  return true;
-};
-
-
-/**
- * Inflate#onData(chunk) -> Void
- * - chunk (Uint8Array|Array|String): output data. Type of array depends
- *   on js engine support. When string output requested, each chunk
- *   will be string.
- *
- * By default, stores data blocks in `chunks[]` property and glue
- * those in `onEnd`. Override this handler, if you need another behaviour.
- **/
-Inflate.prototype.onData = function (chunk) {
-  this.chunks.push(chunk);
-};
-
-
-/**
- * Inflate#onEnd(status) -> Void
- * - status (Number): inflate status. 0 (Z_OK) on success,
- *   other if not.
- *
- * Called either after you tell inflate that the input stream is
- * complete (Z_FINISH) or should be flushed (Z_SYNC_FLUSH)
- * or if an error happened. By default - join collected chunks,
- * free memory and fill `results` / `err` properties.
- **/
-Inflate.prototype.onEnd = function (status) {
-  // On success - join
-  if (status === c.Z_OK) {
-    if (this.options.to === 'string') {
-      // Glue & convert here, until we teach pako to send
-      // utf8 aligned strings to onData
-      this.result = this.chunks.join('');
-    } else {
-      this.result = utils.flattenChunks(this.chunks);
+    /**
+     * @param {number} value
+     * @param {boolean=} unsigned
+     * @returns {!Long}
+     * @inner
+     */
+    function fromInt(value, unsigned) {
+        var obj, cachedObj, cache;
+        if (unsigned) {
+            value >>>= 0;
+            if (cache = (0 <= value && value < 256)) {
+                cachedObj = UINT_CACHE[value];
+                if (cachedObj)
+                    return cachedObj;
+            }
+            obj = fromBits(value, (value | 0) < 0 ? -1 : 0, true);
+            if (cache)
+                UINT_CACHE[value] = obj;
+            return obj;
+        } else {
+            value |= 0;
+            if (cache = (-128 <= value && value < 128)) {
+                cachedObj = INT_CACHE[value];
+                if (cachedObj)
+                    return cachedObj;
+            }
+            obj = fromBits(value, value < 0 ? -1 : 0, false);
+            if (cache)
+                INT_CACHE[value] = obj;
+            return obj;
+        }
     }
-  }
-  this.chunks = [];
-  this.err = status;
-  this.msg = this.strm.msg;
-};
 
+    /**
+     * Returns a Long representing the given 32 bit integer value.
+     * @function
+     * @param {number} value The 32 bit integer in question
+     * @param {boolean=} unsigned Whether unsigned or not, defaults to `false` for signed
+     * @returns {!Long} The corresponding Long value
+     */
+    Long.fromInt = fromInt;
 
-/**
- * inflate(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to decompress.
- * - options (Object): zlib inflate options.
- *
- * Decompress `data` with inflate/ungzip and `options`. Autodetect
- * format via wrapper header by default. That's why we don't provide
- * separate `ungzip` method.
- *
- * Supported options are:
- *
- * - windowBits
- *
- * [http://zlib.net/manual.html#Advanced](http://zlib.net/manual.html#Advanced)
- * for more information.
- *
- * Sugar (options):
- *
- * - `raw` (Boolean) - say that we work with raw stream, if you don't wish to specify
- *   negative windowBits implicitly.
- * - `to` (String) - if equal to 'string', then result will be converted
- *   from utf8 to utf16 (javascript) string. When string output requested,
- *   chunk length can differ from `chunkSize`, depending on content.
- *
- *
- * ##### Example:
- *
- * ```javascript
- * var pako = require('pako')
- *   , input = pako.deflate([1,2,3,4,5,6,7,8,9])
- *   , output;
- *
- * try {
- *   output = pako.inflate(input);
- * } catch (err)
- *   console.log(err);
- * }
- * ```
- **/
-function inflate(input, options) {
-  var inflator = new Inflate(options);
+    /**
+     * @param {number} value
+     * @param {boolean=} unsigned
+     * @returns {!Long}
+     * @inner
+     */
+    function fromNumber(value, unsigned) {
+        if (isNaN(value) || !isFinite(value))
+            return unsigned ? UZERO : ZERO;
+        if (unsigned) {
+            if (value < 0)
+                return UZERO;
+            if (value >= TWO_PWR_64_DBL)
+                return MAX_UNSIGNED_VALUE;
+        } else {
+            if (value <= -TWO_PWR_63_DBL)
+                return MIN_VALUE;
+            if (value + 1 >= TWO_PWR_63_DBL)
+                return MAX_VALUE;
+        }
+        if (value < 0)
+            return fromNumber(-value, unsigned).neg();
+        return fromBits((value % TWO_PWR_32_DBL) | 0, (value / TWO_PWR_32_DBL) | 0, unsigned);
+    }
 
-  inflator.push(input, true);
+    /**
+     * Returns a Long representing the given value, provided that it is a finite number. Otherwise, zero is returned.
+     * @function
+     * @param {number} value The number in question
+     * @param {boolean=} unsigned Whether unsigned or not, defaults to `false` for signed
+     * @returns {!Long} The corresponding Long value
+     */
+    Long.fromNumber = fromNumber;
 
-  // That will never happens, if you don't cheat with options :)
-  if (inflator.err) { throw inflator.msg || msg[inflator.err]; }
+    /**
+     * @param {number} lowBits
+     * @param {number} highBits
+     * @param {boolean=} unsigned
+     * @returns {!Long}
+     * @inner
+     */
+    function fromBits(lowBits, highBits, unsigned) {
+        return new Long(lowBits, highBits, unsigned);
+    }
 
-  return inflator.result;
-}
+    /**
+     * Returns a Long representing the 64 bit integer that comes by concatenating the given low and high bits. Each is
+     *  assumed to use 32 bits.
+     * @function
+     * @param {number} lowBits The low 32 bits
+     * @param {number} highBits The high 32 bits
+     * @param {boolean=} unsigned Whether unsigned or not, defaults to `false` for signed
+     * @returns {!Long} The corresponding Long value
+     */
+    Long.fromBits = fromBits;
 
+    /**
+     * @function
+     * @param {number} base
+     * @param {number} exponent
+     * @returns {number}
+     * @inner
+     */
+    var pow_dbl = Math.pow; // Used 4 times (4*8 to 15+4)
 
-/**
- * inflateRaw(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to decompress.
- * - options (Object): zlib inflate options.
- *
- * The same as [[inflate]], but creates raw data, without wrapper
- * (header and adler32 crc).
- **/
-function inflateRaw(input, options) {
-  options = options || {};
-  options.raw = true;
-  return inflate(input, options);
-}
+    /**
+     * @param {string} str
+     * @param {(boolean|number)=} unsigned
+     * @param {number=} radix
+     * @returns {!Long}
+     * @inner
+     */
+    function fromString(str, unsigned, radix) {
+        if (str.length === 0)
+            throw Error('empty string');
+        if (str === "NaN" || str === "Infinity" || str === "+Infinity" || str === "-Infinity")
+            return ZERO;
+        if (typeof unsigned === 'number') {
+            // For goog.math.long compatibility
+            radix = unsigned,
+            unsigned = false;
+        } else {
+            unsigned = !! unsigned;
+        }
+        radix = radix || 10;
+        if (radix < 2 || 36 < radix)
+            throw RangeError('radix');
 
+        var p;
+        if ((p = str.indexOf('-')) > 0)
+            throw Error('interior hyphen');
+        else if (p === 0) {
+            return fromString(str.substring(1), unsigned, radix).neg();
+        }
 
-/**
- * ungzip(data[, options]) -> Uint8Array|Array|String
- * - data (Uint8Array|Array|String): input data to decompress.
- * - options (Object): zlib inflate options.
- *
- * Just shortcut to [[inflate]], because it autodetects format
- * by header.content. Done for convenience.
- **/
+        // Do several (8) digits each time through the loop, so as to
+        // minimize the calls to the very expensive emulated div.
+        var radixToPower = fromNumber(pow_dbl(radix, 8));
 
+        var result = ZERO;
+        for (var i = 0; i < str.length; i += 8) {
+            var size = Math.min(8, str.length - i),
+                value = parseInt(str.substring(i, i + size), radix);
+            if (size < 8) {
+                var power = fromNumber(pow_dbl(radix, size));
+                result = result.mul(power).add(fromNumber(value));
+            } else {
+                result = result.mul(radixToPower);
+                result = result.add(fromNumber(value));
+            }
+        }
+        result.unsigned = unsigned;
+        return result;
+    }
 
-exports.Inflate = Inflate;
-exports.inflate = inflate;
-exports.inflateRaw = inflateRaw;
-exports.ungzip  = inflate;
+    /**
+     * Returns a Long representation of the given string, written using the specified radix.
+     * @function
+     * @param {string} str The textual representation of the Long
+     * @param {(boolean|number)=} unsigned Whether unsigned or not, defaults to `false` for signed
+     * @param {number=} radix The radix in which the text is written (2-36), defaults to 10
+     * @returns {!Long} The corresponding Long value
+     */
+    Long.fromString = fromString;
 
-},{"./utils/common":82,"./utils/strings":83,"./zlib/constants":85,"./zlib/gzheader":88,"./zlib/inflate":90,"./zlib/messages":92,"./zlib/zstream":94}],82:[function(_dereq_,module,exports){
+    /**
+     * @function
+     * @param {!Long|number|string|!{low: number, high: number, unsigned: boolean}} val
+     * @returns {!Long}
+     * @inner
+     */
+    function fromValue(val) {
+        if (val /* is compatible */ instanceof Long)
+            return val;
+        if (typeof val === 'number')
+            return fromNumber(val);
+        if (typeof val === 'string')
+            return fromString(val);
+        // Throws for non-objects, converts non-instanceof Long:
+        return fromBits(val.low, val.high, val.unsigned);
+    }
+
+    /**
+     * Converts the specified value to a Long.
+     * @function
+     * @param {!Long|number|string|!{low: number, high: number, unsigned: boolean}} val Value
+     * @returns {!Long}
+     */
+    Long.fromValue = fromValue;
+
+    // NOTE: the compiler should inline these constant values below and then remove these variables, so there should be
+    // no runtime penalty for these.
+
+    /**
+     * @type {number}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_16_DBL = 1 << 16;
+
+    /**
+     * @type {number}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_24_DBL = 1 << 24;
+
+    /**
+     * @type {number}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_32_DBL = TWO_PWR_16_DBL * TWO_PWR_16_DBL;
+
+    /**
+     * @type {number}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_64_DBL = TWO_PWR_32_DBL * TWO_PWR_32_DBL;
+
+    /**
+     * @type {number}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_63_DBL = TWO_PWR_64_DBL / 2;
+
+    /**
+     * @type {!Long}
+     * @const
+     * @inner
+     */
+    var TWO_PWR_24 = fromInt(TWO_PWR_24_DBL);
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var ZERO = fromInt(0);
+
+    /**
+     * Signed zero.
+     * @type {!Long}
+     */
+    Long.ZERO = ZERO;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var UZERO = fromInt(0, true);
+
+    /**
+     * Unsigned zero.
+     * @type {!Long}
+     */
+    Long.UZERO = UZERO;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var ONE = fromInt(1);
+
+    /**
+     * Signed one.
+     * @type {!Long}
+     */
+    Long.ONE = ONE;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var UONE = fromInt(1, true);
+
+    /**
+     * Unsigned one.
+     * @type {!Long}
+     */
+    Long.UONE = UONE;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var NEG_ONE = fromInt(-1);
+
+    /**
+     * Signed negative one.
+     * @type {!Long}
+     */
+    Long.NEG_ONE = NEG_ONE;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var MAX_VALUE = fromBits(0xFFFFFFFF|0, 0x7FFFFFFF|0, false);
+
+    /**
+     * Maximum signed value.
+     * @type {!Long}
+     */
+    Long.MAX_VALUE = MAX_VALUE;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var MAX_UNSIGNED_VALUE = fromBits(0xFFFFFFFF|0, 0xFFFFFFFF|0, true);
+
+    /**
+     * Maximum unsigned value.
+     * @type {!Long}
+     */
+    Long.MAX_UNSIGNED_VALUE = MAX_UNSIGNED_VALUE;
+
+    /**
+     * @type {!Long}
+     * @inner
+     */
+    var MIN_VALUE = fromBits(0, 0x80000000|0, false);
+
+    /**
+     * Minimum signed value.
+     * @type {!Long}
+     */
+    Long.MIN_VALUE = MIN_VALUE;
+
+    /**
+     * @alias Long.prototype
+     * @inner
+     */
+    var LongPrototype = Long.prototype;
+
+    /**
+     * Converts the Long to a 32 bit integer, assuming it is a 32 bit integer.
+     * @returns {number}
+     */
+    LongPrototype.toInt = function toInt() {
+        return this.unsigned ? this.low >>> 0 : this.low;
+    };
+
+    /**
+     * Converts the Long to a the nearest floating-point representation of this value (double, 53 bit mantissa).
+     * @returns {number}
+     */
+    LongPrototype.toNumber = function toNumber() {
+        if (this.unsigned)
+            return ((this.high >>> 0) * TWO_PWR_32_DBL) + (this.low >>> 0);
+        return this.high * TWO_PWR_32_DBL + (this.low >>> 0);
+    };
+
+    /**
+     * Converts the Long to a string written in the specified radix.
+     * @param {number=} radix Radix (2-36), defaults to 10
+     * @returns {string}
+     * @override
+     * @throws {RangeError} If `radix` is out of range
+     */
+    LongPrototype.toString = function toString(radix) {
+        radix = radix || 10;
+        if (radix < 2 || 36 < radix)
+            throw RangeError('radix');
+        if (this.isZero())
+            return '0';
+        if (this.isNegative()) { // Unsigned Longs are never negative
+            if (this.eq(MIN_VALUE)) {
+                // We need to change the Long value before it can be negated, so we remove
+                // the bottom-most digit in this base and then recurse to do the rest.
+                var radixLong = fromNumber(radix),
+                    div = this.div(radixLong),
+                    rem1 = div.mul(radixLong).sub(this);
+                return div.toString(radix) + rem1.toInt().toString(radix);
+            } else
+                return '-' + this.neg().toString(radix);
+        }
+
+        // Do several (6) digits each time through the loop, so as to
+        // minimize the calls to the very expensive emulated div.
+        var radixToPower = fromNumber(pow_dbl(radix, 6), this.unsigned),
+            rem = this;
+        var result = '';
+        while (true) {
+            var remDiv = rem.div(radixToPower),
+                intval = rem.sub(remDiv.mul(radixToPower)).toInt() >>> 0,
+                digits = intval.toString(radix);
+            rem = remDiv;
+            if (rem.isZero())
+                return digits + result;
+            else {
+                while (digits.length < 6)
+                    digits = '0' + digits;
+                result = '' + digits + result;
+            }
+        }
+    };
+
+    /**
+     * Gets the high 32 bits as a signed integer.
+     * @returns {number} Signed high bits
+     */
+    LongPrototype.getHighBits = function getHighBits() {
+        return this.high;
+    };
+
+    /**
+     * Gets the high 32 bits as an unsigned integer.
+     * @returns {number} Unsigned high bits
+     */
+    LongPrototype.getHighBitsUnsigned = function getHighBitsUnsigned() {
+        return this.high >>> 0;
+    };
+
+    /**
+     * Gets the low 32 bits as a signed integer.
+     * @returns {number} Signed low bits
+     */
+    LongPrototype.getLowBits = function getLowBits() {
+        return this.low;
+    };
+
+    /**
+     * Gets the low 32 bits as an unsigned integer.
+     * @returns {number} Unsigned low bits
+     */
+    LongPrototype.getLowBitsUnsigned = function getLowBitsUnsigned() {
+        return this.low >>> 0;
+    };
+
+    /**
+     * Gets the number of bits needed to represent the absolute value of this Long.
+     * @returns {number}
+     */
+    LongPrototype.getNumBitsAbs = function getNumBitsAbs() {
+        if (this.isNegative()) // Unsigned Longs are never negative
+            return this.eq(MIN_VALUE) ? 64 : this.neg().getNumBitsAbs();
+        var val = this.high != 0 ? this.high : this.low;
+        for (var bit = 31; bit > 0; bit--)
+            if ((val & (1 << bit)) != 0)
+                break;
+        return this.high != 0 ? bit + 33 : bit + 1;
+    };
+
+    /**
+     * Tests if this Long's value equals zero.
+     * @returns {boolean}
+     */
+    LongPrototype.isZero = function isZero() {
+        return this.high === 0 && this.low === 0;
+    };
+
+    /**
+     * Tests if this Long's value is negative.
+     * @returns {boolean}
+     */
+    LongPrototype.isNegative = function isNegative() {
+        return !this.unsigned && this.high < 0;
+    };
+
+    /**
+     * Tests if this Long's value is positive.
+     * @returns {boolean}
+     */
+    LongPrototype.isPositive = function isPositive() {
+        return this.unsigned || this.high >= 0;
+    };
+
+    /**
+     * Tests if this Long's value is odd.
+     * @returns {boolean}
+     */
+    LongPrototype.isOdd = function isOdd() {
+        return (this.low & 1) === 1;
+    };
+
+    /**
+     * Tests if this Long's value is even.
+     * @returns {boolean}
+     */
+    LongPrototype.isEven = function isEven() {
+        return (this.low & 1) === 0;
+    };
+
+    /**
+     * Tests if this Long's value equals the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.equals = function equals(other) {
+        if (!isLong(other))
+            other = fromValue(other);
+        if (this.unsigned !== other.unsigned && (this.high >>> 31) === 1 && (other.high >>> 31) === 1)
+            return false;
+        return this.high === other.high && this.low === other.low;
+    };
+
+    /**
+     * Tests if this Long's value equals the specified's. This is an alias of {@link Long#equals}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.eq = LongPrototype.equals;
+
+    /**
+     * Tests if this Long's value differs from the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.notEquals = function notEquals(other) {
+        return !this.eq(/* validates */ other);
+    };
+
+    /**
+     * Tests if this Long's value differs from the specified's. This is an alias of {@link Long#notEquals}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.neq = LongPrototype.notEquals;
+
+    /**
+     * Tests if this Long's value is less than the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.lessThan = function lessThan(other) {
+        return this.comp(/* validates */ other) < 0;
+    };
+
+    /**
+     * Tests if this Long's value is less than the specified's. This is an alias of {@link Long#lessThan}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.lt = LongPrototype.lessThan;
+
+    /**
+     * Tests if this Long's value is less than or equal the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.lessThanOrEqual = function lessThanOrEqual(other) {
+        return this.comp(/* validates */ other) <= 0;
+    };
+
+    /**
+     * Tests if this Long's value is less than or equal the specified's. This is an alias of {@link Long#lessThanOrEqual}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.lte = LongPrototype.lessThanOrEqual;
+
+    /**
+     * Tests if this Long's value is greater than the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.greaterThan = function greaterThan(other) {
+        return this.comp(/* validates */ other) > 0;
+    };
+
+    /**
+     * Tests if this Long's value is greater than the specified's. This is an alias of {@link Long#greaterThan}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.gt = LongPrototype.greaterThan;
+
+    /**
+     * Tests if this Long's value is greater than or equal the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.greaterThanOrEqual = function greaterThanOrEqual(other) {
+        return this.comp(/* validates */ other) >= 0;
+    };
+
+    /**
+     * Tests if this Long's value is greater than or equal the specified's. This is an alias of {@link Long#greaterThanOrEqual}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {boolean}
+     */
+    LongPrototype.gte = LongPrototype.greaterThanOrEqual;
+
+    /**
+     * Compares this Long's value with the specified's.
+     * @param {!Long|number|string} other Other value
+     * @returns {number} 0 if they are the same, 1 if the this is greater and -1
+     *  if the given one is greater
+     */
+    LongPrototype.compare = function compare(other) {
+        if (!isLong(other))
+            other = fromValue(other);
+        if (this.eq(other))
+            return 0;
+        var thisNeg = this.isNegative(),
+            otherNeg = other.isNegative();
+        if (thisNeg && !otherNeg)
+            return -1;
+        if (!thisNeg && otherNeg)
+            return 1;
+        // At this point the sign bits are the same
+        if (!this.unsigned)
+            return this.sub(other).isNegative() ? -1 : 1;
+        // Both are positive if at least one is unsigned
+        return (other.high >>> 0) > (this.high >>> 0) || (other.high === this.high && (other.low >>> 0) > (this.low >>> 0)) ? -1 : 1;
+    };
+
+    /**
+     * Compares this Long's value with the specified's. This is an alias of {@link Long#compare}.
+     * @function
+     * @param {!Long|number|string} other Other value
+     * @returns {number} 0 if they are the same, 1 if the this is greater and -1
+     *  if the given one is greater
+     */
+    LongPrototype.comp = LongPrototype.compare;
+
+    /**
+     * Negates this Long's value.
+     * @returns {!Long} Negated Long
+     */
+    LongPrototype.negate = function negate() {
+        if (!this.unsigned && this.eq(MIN_VALUE))
+            return MIN_VALUE;
+        return this.not().add(ONE);
+    };
+
+    /**
+     * Negates this Long's value. This is an alias of {@link Long#negate}.
+     * @function
+     * @returns {!Long} Negated Long
+     */
+    LongPrototype.neg = LongPrototype.negate;
+
+    /**
+     * Returns the sum of this and the specified Long.
+     * @param {!Long|number|string} addend Addend
+     * @returns {!Long} Sum
+     */
+    LongPrototype.add = function add(addend) {
+        if (!isLong(addend))
+            addend = fromValue(addend);
+
+        // Divide each number into 4 chunks of 16 bits, and then sum the chunks.
+
+        var a48 = this.high >>> 16;
+        var a32 = this.high & 0xFFFF;
+        var a16 = this.low >>> 16;
+        var a00 = this.low & 0xFFFF;
+
+        var b48 = addend.high >>> 16;
+        var b32 = addend.high & 0xFFFF;
+        var b16 = addend.low >>> 16;
+        var b00 = addend.low & 0xFFFF;
+
+        var c48 = 0, c32 = 0, c16 = 0, c00 = 0;
+        c00 += a00 + b00;
+        c16 += c00 >>> 16;
+        c00 &= 0xFFFF;
+        c16 += a16 + b16;
+        c32 += c16 >>> 16;
+        c16 &= 0xFFFF;
+        c32 += a32 + b32;
+        c48 += c32 >>> 16;
+        c32 &= 0xFFFF;
+        c48 += a48 + b48;
+        c48 &= 0xFFFF;
+        return fromBits((c16 << 16) | c00, (c48 << 16) | c32, this.unsigned);
+    };
+
+    /**
+     * Returns the difference of this and the specified Long.
+     * @param {!Long|number|string} subtrahend Subtrahend
+     * @returns {!Long} Difference
+     */
+    LongPrototype.subtract = function subtract(subtrahend) {
+        if (!isLong(subtrahend))
+            subtrahend = fromValue(subtrahend);
+        return this.add(subtrahend.neg());
+    };
+
+    /**
+     * Returns the difference of this and the specified Long. This is an alias of {@link Long#subtract}.
+     * @function
+     * @param {!Long|number|string} subtrahend Subtrahend
+     * @returns {!Long} Difference
+     */
+    LongPrototype.sub = LongPrototype.subtract;
+
+    /**
+     * Returns the product of this and the specified Long.
+     * @param {!Long|number|string} multiplier Multiplier
+     * @returns {!Long} Product
+     */
+    LongPrototype.multiply = function multiply(multiplier) {
+        if (this.isZero())
+            return ZERO;
+        if (!isLong(multiplier))
+            multiplier = fromValue(multiplier);
+        if (multiplier.isZero())
+            return ZERO;
+        if (this.eq(MIN_VALUE))
+            return multiplier.isOdd() ? MIN_VALUE : ZERO;
+        if (multiplier.eq(MIN_VALUE))
+            return this.isOdd() ? MIN_VALUE : ZERO;
+
+        if (this.isNegative()) {
+            if (multiplier.isNegative())
+                return this.neg().mul(multiplier.neg());
+            else
+                return this.neg().mul(multiplier).neg();
+        } else if (multiplier.isNegative())
+            return this.mul(multiplier.neg()).neg();
+
+        // If both longs are small, use float multiplication
+        if (this.lt(TWO_PWR_24) && multiplier.lt(TWO_PWR_24))
+            return fromNumber(this.toNumber() * multiplier.toNumber(), this.unsigned);
+
+        // Divide each long into 4 chunks of 16 bits, and then add up 4x4 products.
+        // We can skip products that would overflow.
+
+        var a48 = this.high >>> 16;
+        var a32 = this.high & 0xFFFF;
+        var a16 = this.low >>> 16;
+        var a00 = this.low & 0xFFFF;
+
+        var b48 = multiplier.high >>> 16;
+        var b32 = multiplier.high & 0xFFFF;
+        var b16 = multiplier.low >>> 16;
+        var b00 = multiplier.low & 0xFFFF;
+
+        var c48 = 0, c32 = 0, c16 = 0, c00 = 0;
+        c00 += a00 * b00;
+        c16 += c00 >>> 16;
+        c00 &= 0xFFFF;
+        c16 += a16 * b00;
+        c32 += c16 >>> 16;
+        c16 &= 0xFFFF;
+        c16 += a00 * b16;
+        c32 += c16 >>> 16;
+        c16 &= 0xFFFF;
+        c32 += a32 * b00;
+        c48 += c32 >>> 16;
+        c32 &= 0xFFFF;
+        c32 += a16 * b16;
+        c48 += c32 >>> 16;
+        c32 &= 0xFFFF;
+        c32 += a00 * b32;
+        c48 += c32 >>> 16;
+        c32 &= 0xFFFF;
+        c48 += a48 * b00 + a32 * b16 + a16 * b32 + a00 * b48;
+        c48 &= 0xFFFF;
+        return fromBits((c16 << 16) | c00, (c48 << 16) | c32, this.unsigned);
+    };
+
+    /**
+     * Returns the product of this and the specified Long. This is an alias of {@link Long#multiply}.
+     * @function
+     * @param {!Long|number|string} multiplier Multiplier
+     * @returns {!Long} Product
+     */
+    LongPrototype.mul = LongPrototype.multiply;
+
+    /**
+     * Returns this Long divided by the specified. The result is signed if this Long is signed or
+     *  unsigned if this Long is unsigned.
+     * @param {!Long|number|string} divisor Divisor
+     * @returns {!Long} Quotient
+     */
+    LongPrototype.divide = function divide(divisor) {
+        if (!isLong(divisor))
+            divisor = fromValue(divisor);
+        if (divisor.isZero())
+            throw Error('division by zero');
+        if (this.isZero())
+            return this.unsigned ? UZERO : ZERO;
+        var approx, rem, res;
+        if (!this.unsigned) {
+            // This section is only relevant for signed longs and is derived from the
+            // closure library as a whole.
+            if (this.eq(MIN_VALUE)) {
+                if (divisor.eq(ONE) || divisor.eq(NEG_ONE))
+                    return MIN_VALUE;  // recall that -MIN_VALUE == MIN_VALUE
+                else if (divisor.eq(MIN_VALUE))
+                    return ONE;
+                else {
+                    // At this point, we have |other| >= 2, so |this/other| < |MIN_VALUE|.
+                    var halfThis = this.shr(1);
+                    approx = halfThis.div(divisor).shl(1);
+                    if (approx.eq(ZERO)) {
+                        return divisor.isNegative() ? ONE : NEG_ONE;
+                    } else {
+                        rem = this.sub(divisor.mul(approx));
+                        res = approx.add(rem.div(divisor));
+                        return res;
+                    }
+                }
+            } else if (divisor.eq(MIN_VALUE))
+                return this.unsigned ? UZERO : ZERO;
+            if (this.isNegative()) {
+                if (divisor.isNegative())
+                    return this.neg().div(divisor.neg());
+                return this.neg().div(divisor).neg();
+            } else if (divisor.isNegative())
+                return this.div(divisor.neg()).neg();
+            res = ZERO;
+        } else {
+            // The algorithm below has not been made for unsigned longs. It's therefore
+            // required to take special care of the MSB prior to running it.
+            if (!divisor.unsigned)
+                divisor = divisor.toUnsigned();
+            if (divisor.gt(this))
+                return UZERO;
+            if (divisor.gt(this.shru(1))) // 15 >>> 1 = 7 ; with divisor = 8 ; true
+                return UONE;
+            res = UZERO;
+        }
+
+        // Repeat the following until the remainder is less than other:  find a
+        // floating-point that approximates remainder / other *from below*, add this
+        // into the result, and subtract it from the remainder.  It is critical that
+        // the approximate value is less than or equal to the real value so that the
+        // remainder never becomes negative.
+        rem = this;
+        while (rem.gte(divisor)) {
+            // Approximate the result of division. This may be a little greater or
+            // smaller than the actual value.
+            approx = Math.max(1, Math.floor(rem.toNumber() / divisor.toNumber()));
+
+            // We will tweak the approximate result by changing it in the 48-th digit or
+            // the smallest non-fractional digit, whichever is larger.
+            var log2 = Math.ceil(Math.log(approx) / Math.LN2),
+                delta = (log2 <= 48) ? 1 : pow_dbl(2, log2 - 48),
+
+            // Decrease the approximation until it is smaller than the remainder.  Note
+            // that if it is too large, the product overflows and is negative.
+                approxRes = fromNumber(approx),
+                approxRem = approxRes.mul(divisor);
+            while (approxRem.isNegative() || approxRem.gt(rem)) {
+                approx -= delta;
+                approxRes = fromNumber(approx, this.unsigned);
+                approxRem = approxRes.mul(divisor);
+            }
+
+            // We know the answer can't be zero... and actually, zero would cause
+            // infinite recursion since we would make no progress.
+            if (approxRes.isZero())
+                approxRes = ONE;
+
+            res = res.add(approxRes);
+            rem = rem.sub(approxRem);
+        }
+        return res;
+    };
+
+    /**
+     * Returns this Long divided by the specified. This is an alias of {@link Long#divide}.
+     * @function
+     * @param {!Long|number|string} divisor Divisor
+     * @returns {!Long} Quotient
+     */
+    LongPrototype.div = LongPrototype.divide;
+
+    /**
+     * Returns this Long modulo the specified.
+     * @param {!Long|number|string} divisor Divisor
+     * @returns {!Long} Remainder
+     */
+    LongPrototype.modulo = function modulo(divisor) {
+        if (!isLong(divisor))
+            divisor = fromValue(divisor);
+        return this.sub(this.div(divisor).mul(divisor));
+    };
+
+    /**
+     * Returns this Long modulo the specified. This is an alias of {@link Long#modulo}.
+     * @function
+     * @param {!Long|number|string} divisor Divisor
+     * @returns {!Long} Remainder
+     */
+    LongPrototype.mod = LongPrototype.modulo;
+
+    /**
+     * Returns the bitwise NOT of this Long.
+     * @returns {!Long}
+     */
+    LongPrototype.not = function not() {
+        return fromBits(~this.low, ~this.high, this.unsigned);
+    };
+
+    /**
+     * Returns the bitwise AND of this Long and the specified.
+     * @param {!Long|number|string} other Other Long
+     * @returns {!Long}
+     */
+    LongPrototype.and = function and(other) {
+        if (!isLong(other))
+            other = fromValue(other);
+        return fromBits(this.low & other.low, this.high & other.high, this.unsigned);
+    };
+
+    /**
+     * Returns the bitwise OR of this Long and the specified.
+     * @param {!Long|number|string} other Other Long
+     * @returns {!Long}
+     */
+    LongPrototype.or = function or(other) {
+        if (!isLong(other))
+            other = fromValue(other);
+        return fromBits(this.low | other.low, this.high | other.high, this.unsigned);
+    };
+
+    /**
+     * Returns the bitwise XOR of this Long and the given one.
+     * @param {!Long|number|string} other Other Long
+     * @returns {!Long}
+     */
+    LongPrototype.xor = function xor(other) {
+        if (!isLong(other))
+            other = fromValue(other);
+        return fromBits(this.low ^ other.low, this.high ^ other.high, this.unsigned);
+    };
+
+    /**
+     * Returns this Long with bits shifted to the left by the given amount.
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shiftLeft = function shiftLeft(numBits) {
+        if (isLong(numBits))
+            numBits = numBits.toInt();
+        if ((numBits &= 63) === 0)
+            return this;
+        else if (numBits < 32)
+            return fromBits(this.low << numBits, (this.high << numBits) | (this.low >>> (32 - numBits)), this.unsigned);
+        else
+            return fromBits(0, this.low << (numBits - 32), this.unsigned);
+    };
+
+    /**
+     * Returns this Long with bits shifted to the left by the given amount. This is an alias of {@link Long#shiftLeft}.
+     * @function
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shl = LongPrototype.shiftLeft;
+
+    /**
+     * Returns this Long with bits arithmetically shifted to the right by the given amount.
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shiftRight = function shiftRight(numBits) {
+        if (isLong(numBits))
+            numBits = numBits.toInt();
+        if ((numBits &= 63) === 0)
+            return this;
+        else if (numBits < 32)
+            return fromBits((this.low >>> numBits) | (this.high << (32 - numBits)), this.high >> numBits, this.unsigned);
+        else
+            return fromBits(this.high >> (numBits - 32), this.high >= 0 ? 0 : -1, this.unsigned);
+    };
+
+    /**
+     * Returns this Long with bits arithmetically shifted to the right by the given amount. This is an alias of {@link Long#shiftRight}.
+     * @function
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shr = LongPrototype.shiftRight;
+
+    /**
+     * Returns this Long with bits logically shifted to the right by the given amount.
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shiftRightUnsigned = function shiftRightUnsigned(numBits) {
+        if (isLong(numBits))
+            numBits = numBits.toInt();
+        numBits &= 63;
+        if (numBits === 0)
+            return this;
+        else {
+            var high = this.high;
+            if (numBits < 32) {
+                var low = this.low;
+                return fromBits((low >>> numBits) | (high << (32 - numBits)), high >>> numBits, this.unsigned);
+            } else if (numBits === 32)
+                return fromBits(high, 0, this.unsigned);
+            else
+                return fromBits(high >>> (numBits - 32), 0, this.unsigned);
+        }
+    };
+
+    /**
+     * Returns this Long with bits logically shifted to the right by the given amount. This is an alias of {@link Long#shiftRightUnsigned}.
+     * @function
+     * @param {number|!Long} numBits Number of bits
+     * @returns {!Long} Shifted Long
+     */
+    LongPrototype.shru = LongPrototype.shiftRightUnsigned;
+
+    /**
+     * Converts this Long to signed.
+     * @returns {!Long} Signed long
+     */
+    LongPrototype.toSigned = function toSigned() {
+        if (!this.unsigned)
+            return this;
+        return fromBits(this.low, this.high, false);
+    };
+
+    /**
+     * Converts this Long to unsigned.
+     * @returns {!Long} Unsigned long
+     */
+    LongPrototype.toUnsigned = function toUnsigned() {
+        if (this.unsigned)
+            return this;
+        return fromBits(this.low, this.high, true);
+    };
+
+    /**
+     * Converts this Long to its byte representation.
+     * @param {boolean=} le Whether little or big endian, defaults to big endian
+     * @returns {!Array.<number>} Byte representation
+     */
+    LongPrototype.toBytes = function(le) {
+        return le ? this.toBytesLE() : this.toBytesBE();
+    }
+
+    /**
+     * Converts this Long to its little endian byte representation.
+     * @returns {!Array.<number>} Little endian byte representation
+     */
+    LongPrototype.toBytesLE = function() {
+        var hi = this.high,
+            lo = this.low;
+        return [
+             lo         & 0xff,
+            (lo >>>  8) & 0xff,
+            (lo >>> 16) & 0xff,
+            (lo >>> 24) & 0xff,
+             hi         & 0xff,
+            (hi >>>  8) & 0xff,
+            (hi >>> 16) & 0xff,
+            (hi >>> 24) & 0xff
+        ];
+    }
+
+    /**
+     * Converts this Long to its big endian byte representation.
+     * @returns {!Array.<number>} Big endian byte representation
+     */
+    LongPrototype.toBytesBE = function() {
+        var hi = this.high,
+            lo = this.low;
+        return [
+            (hi >>> 24) & 0xff,
+            (hi >>> 16) & 0xff,
+            (hi >>>  8) & 0xff,
+             hi         & 0xff,
+            (lo >>> 24) & 0xff,
+            (lo >>> 16) & 0xff,
+            (lo >>>  8) & 0xff,
+             lo         & 0xff
+        ];
+    }
+
+    return Long;
+});
+
+},{}],59:[function(require,module,exports){
 'use strict';
 
 
@@ -11420,194 +15295,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],83:[function(_dereq_,module,exports){
-// String encode/decode helpers
-'use strict';
-
-
-var utils = _dereq_('./common');
-
-
-// Quick check if we can use fast array to bin string conversion
-//
-// - apply(Array) can fail on Android 2.2
-// - apply(Uint8Array) can fail on iOS 5.1 Safari
-//
-var STR_APPLY_OK = true;
-var STR_APPLY_UIA_OK = true;
-
-try { String.fromCharCode.apply(null, [ 0 ]); } catch (__) { STR_APPLY_OK = false; }
-try { String.fromCharCode.apply(null, new Uint8Array(1)); } catch (__) { STR_APPLY_UIA_OK = false; }
-
-
-// Table with utf8 lengths (calculated by first byte of sequence)
-// Note, that 5 & 6-byte values and some 4-byte values can not be represented in JS,
-// because max possible codepoint is 0x10ffff
-var _utf8len = new utils.Buf8(256);
-for (var q = 0; q < 256; q++) {
-  _utf8len[q] = (q >= 252 ? 6 : q >= 248 ? 5 : q >= 240 ? 4 : q >= 224 ? 3 : q >= 192 ? 2 : 1);
-}
-_utf8len[254] = _utf8len[254] = 1; // Invalid sequence start
-
-
-// convert string to array (typed, when possible)
-exports.string2buf = function (str) {
-  var buf, c, c2, m_pos, i, str_len = str.length, buf_len = 0;
-
-  // count binary size
-  for (m_pos = 0; m_pos < str_len; m_pos++) {
-    c = str.charCodeAt(m_pos);
-    if ((c & 0xfc00) === 0xd800 && (m_pos + 1 < str_len)) {
-      c2 = str.charCodeAt(m_pos + 1);
-      if ((c2 & 0xfc00) === 0xdc00) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
-        m_pos++;
-      }
-    }
-    buf_len += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
-  }
-
-  // allocate buffer
-  buf = new utils.Buf8(buf_len);
-
-  // convert
-  for (i = 0, m_pos = 0; i < buf_len; m_pos++) {
-    c = str.charCodeAt(m_pos);
-    if ((c & 0xfc00) === 0xd800 && (m_pos + 1 < str_len)) {
-      c2 = str.charCodeAt(m_pos + 1);
-      if ((c2 & 0xfc00) === 0xdc00) {
-        c = 0x10000 + ((c - 0xd800) << 10) + (c2 - 0xdc00);
-        m_pos++;
-      }
-    }
-    if (c < 0x80) {
-      /* one byte */
-      buf[i++] = c;
-    } else if (c < 0x800) {
-      /* two bytes */
-      buf[i++] = 0xC0 | (c >>> 6);
-      buf[i++] = 0x80 | (c & 0x3f);
-    } else if (c < 0x10000) {
-      /* three bytes */
-      buf[i++] = 0xE0 | (c >>> 12);
-      buf[i++] = 0x80 | (c >>> 6 & 0x3f);
-      buf[i++] = 0x80 | (c & 0x3f);
-    } else {
-      /* four bytes */
-      buf[i++] = 0xf0 | (c >>> 18);
-      buf[i++] = 0x80 | (c >>> 12 & 0x3f);
-      buf[i++] = 0x80 | (c >>> 6 & 0x3f);
-      buf[i++] = 0x80 | (c & 0x3f);
-    }
-  }
-
-  return buf;
-};
-
-// Helper (used in 2 places)
-function buf2binstring(buf, len) {
-  // use fallback for big arrays to avoid stack overflow
-  if (len < 65537) {
-    if ((buf.subarray && STR_APPLY_UIA_OK) || (!buf.subarray && STR_APPLY_OK)) {
-      return String.fromCharCode.apply(null, utils.shrinkBuf(buf, len));
-    }
-  }
-
-  var result = '';
-  for (var i = 0; i < len; i++) {
-    result += String.fromCharCode(buf[i]);
-  }
-  return result;
-}
-
-
-// Convert byte array to binary string
-exports.buf2binstring = function (buf) {
-  return buf2binstring(buf, buf.length);
-};
-
-
-// Convert binary string (typed, when possible)
-exports.binstring2buf = function (str) {
-  var buf = new utils.Buf8(str.length);
-  for (var i = 0, len = buf.length; i < len; i++) {
-    buf[i] = str.charCodeAt(i);
-  }
-  return buf;
-};
-
-
-// convert array to string
-exports.buf2string = function (buf, max) {
-  var i, out, c, c_len;
-  var len = max || buf.length;
-
-  // Reserve max possible length (2 words per char)
-  // NB: by unknown reasons, Array is significantly faster for
-  //     String.fromCharCode.apply than Uint16Array.
-  var utf16buf = new Array(len * 2);
-
-  for (out = 0, i = 0; i < len;) {
-    c = buf[i++];
-    // quick process ascii
-    if (c < 0x80) { utf16buf[out++] = c; continue; }
-
-    c_len = _utf8len[c];
-    // skip 5 & 6 byte codes
-    if (c_len > 4) { utf16buf[out++] = 0xfffd; i += c_len - 1; continue; }
-
-    // apply mask on first byte
-    c &= c_len === 2 ? 0x1f : c_len === 3 ? 0x0f : 0x07;
-    // join the rest
-    while (c_len > 1 && i < len) {
-      c = (c << 6) | (buf[i++] & 0x3f);
-      c_len--;
-    }
-
-    // terminated by end of string?
-    if (c_len > 1) { utf16buf[out++] = 0xfffd; continue; }
-
-    if (c < 0x10000) {
-      utf16buf[out++] = c;
-    } else {
-      c -= 0x10000;
-      utf16buf[out++] = 0xd800 | ((c >> 10) & 0x3ff);
-      utf16buf[out++] = 0xdc00 | (c & 0x3ff);
-    }
-  }
-
-  return buf2binstring(utf16buf, out);
-};
-
-
-// Calculate max possible position in utf8 buffer,
-// that will not break sequence. If that's not possible
-// - (very small limits) return max size as is.
-//
-// buf[] - utf8 bytes array
-// max   - length limit (mandatory);
-exports.utf8border = function (buf, max) {
-  var pos;
-
-  max = max || buf.length;
-  if (max > buf.length) { max = buf.length; }
-
-  // go back from last position, until start of sequence found
-  pos = max - 1;
-  while (pos >= 0 && (buf[pos] & 0xC0) === 0x80) { pos--; }
-
-  // Very small and broken sequence,
-  // return max, because we should return something anyway.
-  if (pos < 0) { return max; }
-
-  // If we came to start of buffer - that means buffer is too small,
-  // return max too.
-  if (pos === 0) { return max; }
-
-  return (pos + _utf8len[buf[pos]] > max) ? pos : max;
-};
-
-},{"./common":82}],84:[function(_dereq_,module,exports){
+},{}],60:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -11660,7 +15348,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],85:[function(_dereq_,module,exports){
+},{}],61:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -11730,7 +15418,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],86:[function(_dereq_,module,exports){
+},{}],62:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -11791,7 +15479,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],87:[function(_dereq_,module,exports){
+},{}],63:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -11813,11 +15501,11 @@ module.exports = crc32;
 //   misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
-var utils   = _dereq_('../utils/common');
-var trees   = _dereq_('./trees');
-var adler32 = _dereq_('./adler32');
-var crc32   = _dereq_('./crc32');
-var msg     = _dereq_('./messages');
+var utils   = require('../utils/common');
+var trees   = require('./trees');
+var adler32 = require('./adler32');
+var crc32   = require('./crc32');
+var msg     = require('./messages');
 
 /* Public constants ==========================================================*/
 /* ===========================================================================*/
@@ -13667,67 +17355,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":82,"./adler32":84,"./crc32":86,"./messages":92,"./trees":93}],88:[function(_dereq_,module,exports){
-'use strict';
-
-// (C) 1995-2013 Jean-loup Gailly and Mark Adler
-// (C) 2014-2017 Vitaly Puzrin and Andrey Tupitsin
-//
-// This software is provided 'as-is', without any express or implied
-// warranty. In no event will the authors be held liable for any damages
-// arising from the use of this software.
-//
-// Permission is granted to anyone to use this software for any purpose,
-// including commercial applications, and to alter it and redistribute it
-// freely, subject to the following restrictions:
-//
-// 1. The origin of this software must not be misrepresented; you must not
-//   claim that you wrote the original software. If you use this software
-//   in a product, an acknowledgment in the product documentation would be
-//   appreciated but is not required.
-// 2. Altered source versions must be plainly marked as such, and must not be
-//   misrepresented as being the original software.
-// 3. This notice may not be removed or altered from any source distribution.
-
-function GZheader() {
-  /* true if compressed data believed to be text */
-  this.text       = 0;
-  /* modification time */
-  this.time       = 0;
-  /* extra flags (not used when writing a gzip file) */
-  this.xflags     = 0;
-  /* operating system */
-  this.os         = 0;
-  /* pointer to extra field or Z_NULL if none */
-  this.extra      = null;
-  /* extra field length (valid if extra != Z_NULL) */
-  this.extra_len  = 0; // Actually, we don't need it in JS,
-                       // but leave for few code modifications
-
-  //
-  // Setup limits is not necessary because in js we should not preallocate memory
-  // for inflate use constant limit in 65536 bytes
-  //
-
-  /* space at extra (only when reading header) */
-  // this.extra_max  = 0;
-  /* pointer to zero-terminated file name or Z_NULL */
-  this.name       = '';
-  /* space at name (only when reading header) */
-  // this.name_max   = 0;
-  /* pointer to zero-terminated comment or Z_NULL */
-  this.comment    = '';
-  /* space at comment (only when reading header) */
-  // this.comm_max   = 0;
-  /* true if there was or will be a header crc */
-  this.hcrc       = 0;
-  /* true when done reading gzip header (not used when writing a gzip file) */
-  this.done       = false;
-}
-
-module.exports = GZheader;
-
-},{}],89:[function(_dereq_,module,exports){
+},{"../utils/common":59,"./adler32":60,"./crc32":62,"./messages":67,"./trees":68}],64:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -14074,7 +17702,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],90:[function(_dereq_,module,exports){
+},{}],65:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -14096,11 +17724,11 @@ module.exports = function inflate_fast(strm, start) {
 //   misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
-var utils         = _dereq_('../utils/common');
-var adler32       = _dereq_('./adler32');
-var crc32         = _dereq_('./crc32');
-var inflate_fast  = _dereq_('./inffast');
-var inflate_table = _dereq_('./inftrees');
+var utils         = require('../utils/common');
+var adler32       = require('./adler32');
+var crc32         = require('./crc32');
+var inflate_fast  = require('./inffast');
+var inflate_table = require('./inftrees');
 
 var CODES = 0;
 var LENS = 1;
@@ -15632,7 +19260,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":82,"./adler32":84,"./crc32":86,"./inffast":89,"./inftrees":91}],91:[function(_dereq_,module,exports){
+},{"../utils/common":59,"./adler32":60,"./crc32":62,"./inffast":64,"./inftrees":66}],66:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -15654,7 +19282,7 @@ exports.inflateUndermine = inflateUndermine;
 //   misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
-var utils = _dereq_('../utils/common');
+var utils = require('../utils/common');
 
 var MAXBITS = 15;
 var ENOUGH_LENS = 852;
@@ -15977,7 +19605,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":82}],92:[function(_dereq_,module,exports){
+},{"../utils/common":59}],67:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -16011,7 +19639,7 @@ module.exports = {
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],93:[function(_dereq_,module,exports){
+},{}],68:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -16033,7 +19661,7 @@ module.exports = {
 //   misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
 
-var utils = _dereq_('../utils/common');
+var utils = require('../utils/common');
 
 /* Public constants ==========================================================*/
 /* ===========================================================================*/
@@ -17233,7 +20861,7 @@ exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":82}],94:[function(_dereq_,module,exports){
+},{"../utils/common":59}],69:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -17282,29 +20910,258 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],95:[function(_dereq_,module,exports){
+},{}],70:[function(require,module,exports){
+(function (process){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// resolves . and .. elements in a path array with directory names there
+// must be no slashes, empty elements, or device names (c:\) in the array
+// (so also no leading and trailing slashes - it does not distinguish
+// relative and absolute paths)
+function normalizeArray(parts, allowAboveRoot) {
+  // if the path tries to go above the root, `up` ends up > 0
+  var up = 0;
+  for (var i = parts.length - 1; i >= 0; i--) {
+    var last = parts[i];
+    if (last === '.') {
+      parts.splice(i, 1);
+    } else if (last === '..') {
+      parts.splice(i, 1);
+      up++;
+    } else if (up) {
+      parts.splice(i, 1);
+      up--;
+    }
+  }
+
+  // if the path is allowed to go above the root, restore leading ..s
+  if (allowAboveRoot) {
+    for (; up--; up) {
+      parts.unshift('..');
+    }
+  }
+
+  return parts;
+}
+
+// Split a filename into [root, dir, basename, ext], unix version
+// 'root' is just a slash, or nothing.
+var splitPathRe =
+    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
+var splitPath = function(filename) {
+  return splitPathRe.exec(filename).slice(1);
+};
+
+// path.resolve([from ...], to)
+// posix version
+exports.resolve = function() {
+  var resolvedPath = '',
+      resolvedAbsolute = false;
+
+  for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+    var path = (i >= 0) ? arguments[i] : process.cwd();
+
+    // Skip empty and invalid entries
+    if (typeof path !== 'string') {
+      throw new TypeError('Arguments to path.resolve must be strings');
+    } else if (!path) {
+      continue;
+    }
+
+    resolvedPath = path + '/' + resolvedPath;
+    resolvedAbsolute = path.charAt(0) === '/';
+  }
+
+  // At this point the path should be resolved to a full absolute path, but
+  // handle relative paths to be safe (might happen when process.cwd() fails)
+
+  // Normalize the path
+  resolvedPath = normalizeArray(filter(resolvedPath.split('/'), function(p) {
+    return !!p;
+  }), !resolvedAbsolute).join('/');
+
+  return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
+};
+
+// path.normalize(path)
+// posix version
+exports.normalize = function(path) {
+  var isAbsolute = exports.isAbsolute(path),
+      trailingSlash = substr(path, -1) === '/';
+
+  // Normalize the path
+  path = normalizeArray(filter(path.split('/'), function(p) {
+    return !!p;
+  }), !isAbsolute).join('/');
+
+  if (!path && !isAbsolute) {
+    path = '.';
+  }
+  if (path && trailingSlash) {
+    path += '/';
+  }
+
+  return (isAbsolute ? '/' : '') + path;
+};
+
+// posix version
+exports.isAbsolute = function(path) {
+  return path.charAt(0) === '/';
+};
+
+// posix version
+exports.join = function() {
+  var paths = Array.prototype.slice.call(arguments, 0);
+  return exports.normalize(filter(paths, function(p, index) {
+    if (typeof p !== 'string') {
+      throw new TypeError('Arguments to path.join must be strings');
+    }
+    return p;
+  }).join('/'));
+};
+
+
+// path.relative(from, to)
+// posix version
+exports.relative = function(from, to) {
+  from = exports.resolve(from).substr(1);
+  to = exports.resolve(to).substr(1);
+
+  function trim(arr) {
+    var start = 0;
+    for (; start < arr.length; start++) {
+      if (arr[start] !== '') break;
+    }
+
+    var end = arr.length - 1;
+    for (; end >= 0; end--) {
+      if (arr[end] !== '') break;
+    }
+
+    if (start > end) return [];
+    return arr.slice(start, end - start + 1);
+  }
+
+  var fromParts = trim(from.split('/'));
+  var toParts = trim(to.split('/'));
+
+  var length = Math.min(fromParts.length, toParts.length);
+  var samePartsLength = length;
+  for (var i = 0; i < length; i++) {
+    if (fromParts[i] !== toParts[i]) {
+      samePartsLength = i;
+      break;
+    }
+  }
+
+  var outputParts = [];
+  for (var i = samePartsLength; i < fromParts.length; i++) {
+    outputParts.push('..');
+  }
+
+  outputParts = outputParts.concat(toParts.slice(samePartsLength));
+
+  return outputParts.join('/');
+};
+
+exports.sep = '/';
+exports.delimiter = ':';
+
+exports.dirname = function(path) {
+  var result = splitPath(path),
+      root = result[0],
+      dir = result[1];
+
+  if (!root && !dir) {
+    // No dirname whatsoever
+    return '.';
+  }
+
+  if (dir) {
+    // It has a dirname, strip trailing slash
+    dir = dir.substr(0, dir.length - 1);
+  }
+
+  return root + dir;
+};
+
+
+exports.basename = function(path, ext) {
+  var f = splitPath(path)[2];
+  // TODO: make this comparison case-insensitive on windows?
+  if (ext && f.substr(-1 * ext.length) === ext) {
+    f = f.substr(0, f.length - ext.length);
+  }
+  return f;
+};
+
+
+exports.extname = function(path) {
+  return splitPath(path)[3];
+};
+
+function filter (xs, f) {
+    if (xs.filter) return xs.filter(f);
+    var res = [];
+    for (var i = 0; i < xs.length; i++) {
+        if (f(xs[i], i, xs)) res.push(xs[i]);
+    }
+    return res;
+}
+
+// String.prototype.substr - negative index don't work in IE8
+var substr = 'ab'.substr(-1) === 'b'
+    ? function (str, start, len) { return str.substr(start, len) }
+    : function (str, start, len) {
+        if (start < 0) start = str.length + start;
+        return str.substr(start, len);
+    }
+;
+
+}).call(this,require('_process'))
+
+},{"_process":75}],71:[function(require,module,exports){
 /**
  * Parser functions.
  */
 
-var parserFunctions = _dereq_('./lib/parse');
+var parserFunctions = require('./lib/parse');
 Object.keys(parserFunctions).forEach(function (k) { exports[k] = parserFunctions[k]; });
 
 /**
  * Builder functions.
  */
 
-var builderFunctions = _dereq_('./lib/build');
+var builderFunctions = require('./lib/build');
 Object.keys(builderFunctions).forEach(function (k) { exports[k] = builderFunctions[k]; });
 
-},{"./lib/build":96,"./lib/parse":97}],96:[function(_dereq_,module,exports){
+},{"./lib/build":72,"./lib/parse":73}],72:[function(require,module,exports){
 (function (Buffer){
 /**
  * Module dependencies.
  */
 
-var base64 = _dereq_('base64-js');
-var xmlbuilder = _dereq_('xmlbuilder');
+var base64 = require('base64-js');
+var xmlbuilder = require('xmlbuilder');
 
 /**
  * Module exports.
@@ -17437,15 +21294,15 @@ function walk_obj(next, next_child) {
   }
 }
 
-}).call(this,{"isBuffer":_dereq_("../../is-buffer/index.js")})
+}).call(this,{"isBuffer":require("../../is-buffer/index.js")})
 
-},{"../../is-buffer/index.js":40,"base64-js":7,"xmlbuilder":135}],97:[function(_dereq_,module,exports){
+},{"../../is-buffer/index.js":51,"base64-js":10,"xmlbuilder":115}],73:[function(require,module,exports){
 (function (Buffer){
 /**
  * Module dependencies.
  */
 
-var DOMParser = _dereq_('xmldom').DOMParser;
+var DOMParser = require('xmldom').DOMParser;
 
 /**
  * Module exports.
@@ -17657,9 +21514,9 @@ function parsePlistXML (node) {
   }
 }
 
-}).call(this,_dereq_("buffer").Buffer)
+}).call(this,require("buffer").Buffer)
 
-},{"buffer":12,"xmldom":136}],98:[function(_dereq_,module,exports){
+},{"buffer":17,"xmldom":116}],74:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -17705,9 +21562,9 @@ function nextTick(fn, arg1, arg2, arg3) {
   }
 }
 
-}).call(this,_dereq_('_process'))
+}).call(this,require('_process'))
 
-},{"_process":99}],99:[function(_dereq_,module,exports){
+},{"_process":75}],75:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -17893,10 +21750,10 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],100:[function(_dereq_,module,exports){
-module.exports = _dereq_("./lib/_stream_duplex.js")
+},{}],76:[function(require,module,exports){
+module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":101}],101:[function(_dereq_,module,exports){
+},{"./lib/_stream_duplex.js":77}],77:[function(require,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -17917,16 +21774,16 @@ var objectKeys = Object.keys || function (obj) {
 module.exports = Duplex;
 
 /*<replacement>*/
-var processNextTick = _dereq_('process-nextick-args');
+var processNextTick = require('process-nextick-args');
 /*</replacement>*/
 
 /*<replacement>*/
-var util = _dereq_('core-util-is');
-util.inherits = _dereq_('inherits');
+var util = require('core-util-is');
+util.inherits = require('inherits');
 /*</replacement>*/
 
-var Readable = _dereq_('./_stream_readable');
-var Writable = _dereq_('./_stream_writable');
+var Readable = require('./_stream_readable');
+var Writable = require('./_stream_writable');
 
 util.inherits(Duplex, Readable);
 
@@ -17972,7 +21829,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":103,"./_stream_writable":105,"core-util-is":36,"inherits":39,"process-nextick-args":98}],102:[function(_dereq_,module,exports){
+},{"./_stream_readable":79,"./_stream_writable":81,"core-util-is":23,"inherits":50,"process-nextick-args":74}],78:[function(require,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -17981,11 +21838,11 @@ function forEach(xs, f) {
 
 module.exports = PassThrough;
 
-var Transform = _dereq_('./_stream_transform');
+var Transform = require('./_stream_transform');
 
 /*<replacement>*/
-var util = _dereq_('core-util-is');
-util.inherits = _dereq_('inherits');
+var util = require('core-util-is');
+util.inherits = require('inherits');
 /*</replacement>*/
 
 util.inherits(PassThrough, Transform);
@@ -17999,27 +21856,27 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":104,"core-util-is":36,"inherits":39}],103:[function(_dereq_,module,exports){
+},{"./_stream_transform":80,"core-util-is":23,"inherits":50}],79:[function(require,module,exports){
 (function (process){
 'use strict';
 
 module.exports = Readable;
 
 /*<replacement>*/
-var processNextTick = _dereq_('process-nextick-args');
+var processNextTick = require('process-nextick-args');
 /*</replacement>*/
 
 /*<replacement>*/
-var isArray = _dereq_('isarray');
+var isArray = require('isarray');
 /*</replacement>*/
 
 /*<replacement>*/
-var Buffer = _dereq_('buffer').Buffer;
+var Buffer = require('buffer').Buffer;
 /*</replacement>*/
 
 Readable.ReadableState = ReadableState;
 
-var EE = _dereq_('events');
+var EE = require('events');
 
 /*<replacement>*/
 var EElistenerCount = function (emitter, type) {
@@ -18031,22 +21888,22 @@ var EElistenerCount = function (emitter, type) {
 var Stream;
 (function () {
   try {
-    Stream = _dereq_('st' + 'ream');
+    Stream = require('st' + 'ream');
   } catch (_) {} finally {
-    if (!Stream) Stream = _dereq_('events').EventEmitter;
+    if (!Stream) Stream = require('events').EventEmitter;
   }
 })();
 /*</replacement>*/
 
-var Buffer = _dereq_('buffer').Buffer;
+var Buffer = require('buffer').Buffer;
 
 /*<replacement>*/
-var util = _dereq_('core-util-is');
-util.inherits = _dereq_('inherits');
+var util = require('core-util-is');
+util.inherits = require('inherits');
 /*</replacement>*/
 
 /*<replacement>*/
-var debugUtil = _dereq_('util');
+var debugUtil = require('util');
 var debug = undefined;
 if (debugUtil && debugUtil.debuglog) {
   debug = debugUtil.debuglog('stream');
@@ -18061,7 +21918,7 @@ util.inherits(Readable, Stream);
 
 var Duplex;
 function ReadableState(options, stream) {
-  Duplex = Duplex || _dereq_('./_stream_duplex');
+  Duplex = Duplex || require('./_stream_duplex');
 
   options = options || {};
 
@@ -18120,7 +21977,7 @@ function ReadableState(options, stream) {
   this.decoder = null;
   this.encoding = null;
   if (options.encoding) {
-    if (!StringDecoder) StringDecoder = _dereq_('string_decoder/').StringDecoder;
+    if (!StringDecoder) StringDecoder = require('string_decoder/').StringDecoder;
     this.decoder = new StringDecoder(options.encoding);
     this.encoding = options.encoding;
   }
@@ -18128,7 +21985,7 @@ function ReadableState(options, stream) {
 
 var Duplex;
 function Readable(options) {
-  Duplex = Duplex || _dereq_('./_stream_duplex');
+  Duplex = Duplex || require('./_stream_duplex');
 
   if (!(this instanceof Readable)) return new Readable(options);
 
@@ -18231,7 +22088,7 @@ function needMoreData(state) {
 
 // backwards compatibility.
 Readable.prototype.setEncoding = function (enc) {
-  if (!StringDecoder) StringDecoder = _dereq_('string_decoder/').StringDecoder;
+  if (!StringDecoder) StringDecoder = require('string_decoder/').StringDecoder;
   this._readableState.decoder = new StringDecoder(enc);
   this._readableState.encoding = enc;
   return this;
@@ -18881,9 +22738,9 @@ function indexOf(xs, x) {
   }
   return -1;
 }
-}).call(this,_dereq_('_process'))
+}).call(this,require('_process'))
 
-},{"./_stream_duplex":101,"_process":99,"buffer":12,"core-util-is":36,"events":13,"inherits":39,"isarray":42,"process-nextick-args":98,"string_decoder/":111,"util":10}],104:[function(_dereq_,module,exports){
+},{"./_stream_duplex":77,"_process":75,"buffer":17,"core-util-is":23,"events":18,"inherits":50,"isarray":52,"process-nextick-args":74,"string_decoder/":90,"util":13}],80:[function(require,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -18930,11 +22787,11 @@ function indexOf(xs, x) {
 
 module.exports = Transform;
 
-var Duplex = _dereq_('./_stream_duplex');
+var Duplex = require('./_stream_duplex');
 
 /*<replacement>*/
-var util = _dereq_('core-util-is');
-util.inherits = _dereq_('inherits');
+var util = require('core-util-is');
+util.inherits = require('inherits');
 /*</replacement>*/
 
 util.inherits(Transform, Duplex);
@@ -19064,7 +22921,7 @@ function done(stream, er) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":101,"core-util-is":36,"inherits":39}],105:[function(_dereq_,module,exports){
+},{"./_stream_duplex":77,"core-util-is":23,"inherits":50}],81:[function(require,module,exports){
 (function (process,setImmediate){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
@@ -19075,7 +22932,7 @@ function done(stream, er) {
 module.exports = Writable;
 
 /*<replacement>*/
-var processNextTick = _dereq_('process-nextick-args');
+var processNextTick = require('process-nextick-args');
 /*</replacement>*/
 
 /*<replacement>*/
@@ -19083,19 +22940,19 @@ var asyncWrite = !process.browser && ['v0.10', 'v0.9.'].indexOf(process.version.
 /*</replacement>*/
 
 /*<replacement>*/
-var Buffer = _dereq_('buffer').Buffer;
+var Buffer = require('buffer').Buffer;
 /*</replacement>*/
 
 Writable.WritableState = WritableState;
 
 /*<replacement>*/
-var util = _dereq_('core-util-is');
-util.inherits = _dereq_('inherits');
+var util = require('core-util-is');
+util.inherits = require('inherits');
 /*</replacement>*/
 
 /*<replacement>*/
 var internalUtil = {
-  deprecate: _dereq_('util-deprecate')
+  deprecate: require('util-deprecate')
 };
 /*</replacement>*/
 
@@ -19103,14 +22960,14 @@ var internalUtil = {
 var Stream;
 (function () {
   try {
-    Stream = _dereq_('st' + 'ream');
+    Stream = require('st' + 'ream');
   } catch (_) {} finally {
-    if (!Stream) Stream = _dereq_('events').EventEmitter;
+    if (!Stream) Stream = require('events').EventEmitter;
   }
 })();
 /*</replacement>*/
 
-var Buffer = _dereq_('buffer').Buffer;
+var Buffer = require('buffer').Buffer;
 
 util.inherits(Writable, Stream);
 
@@ -19125,7 +22982,7 @@ function WriteReq(chunk, encoding, cb) {
 
 var Duplex;
 function WritableState(options, stream) {
-  Duplex = Duplex || _dereq_('./_stream_duplex');
+  Duplex = Duplex || require('./_stream_duplex');
 
   options = options || {};
 
@@ -19242,7 +23099,7 @@ WritableState.prototype.getBuffer = function writableStateGetBuffer() {
 
 var Duplex;
 function Writable(options) {
-  Duplex = Duplex || _dereq_('./_stream_duplex');
+  Duplex = Duplex || require('./_stream_duplex');
 
   // Writable ctor is applied to Duplexes, though they're not
   // instanceof Writable, they're instanceof Readable.
@@ -19582,32 +23439,32 @@ function CorkedRequest(state) {
     }
   };
 }
-}).call(this,_dereq_('_process'),_dereq_("timers").setImmediate)
+}).call(this,require('_process'),require("timers").setImmediate)
 
-},{"./_stream_duplex":101,"_process":99,"buffer":12,"core-util-is":36,"events":13,"inherits":39,"process-nextick-args":98,"timers":14,"util-deprecate":113}],106:[function(_dereq_,module,exports){
-module.exports = _dereq_("./lib/_stream_passthrough.js")
+},{"./_stream_duplex":77,"_process":75,"buffer":17,"core-util-is":23,"events":18,"inherits":50,"process-nextick-args":74,"timers":19,"util-deprecate":91}],82:[function(require,module,exports){
+module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":102}],107:[function(_dereq_,module,exports){
+},{"./lib/_stream_passthrough.js":78}],83:[function(require,module,exports){
 var Stream = (function (){
   try {
-    return _dereq_('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
+    return require('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
   } catch(_){}
 }());
-exports = module.exports = _dereq_('./lib/_stream_readable.js');
+exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = Stream || exports;
 exports.Readable = exports;
-exports.Writable = _dereq_('./lib/_stream_writable.js');
-exports.Duplex = _dereq_('./lib/_stream_duplex.js');
-exports.Transform = _dereq_('./lib/_stream_transform.js');
-exports.PassThrough = _dereq_('./lib/_stream_passthrough.js');
+exports.Writable = require('./lib/_stream_writable.js');
+exports.Duplex = require('./lib/_stream_duplex.js');
+exports.Transform = require('./lib/_stream_transform.js');
+exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":101,"./lib/_stream_passthrough.js":102,"./lib/_stream_readable.js":103,"./lib/_stream_transform.js":104,"./lib/_stream_writable.js":105}],108:[function(_dereq_,module,exports){
-module.exports = _dereq_("./lib/_stream_transform.js")
+},{"./lib/_stream_duplex.js":77,"./lib/_stream_passthrough.js":78,"./lib/_stream_readable.js":79,"./lib/_stream_transform.js":80,"./lib/_stream_writable.js":81}],84:[function(require,module,exports){
+module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":104}],109:[function(_dereq_,module,exports){
-module.exports = _dereq_("./lib/_stream_writable.js")
+},{"./lib/_stream_transform.js":80}],85:[function(require,module,exports){
+module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":105}],110:[function(_dereq_,module,exports){
+},{"./lib/_stream_writable.js":81}],86:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19631,15 +23488,15 @@ module.exports = _dereq_("./lib/_stream_writable.js")
 
 module.exports = Stream;
 
-var EE = _dereq_('events').EventEmitter;
-var inherits = _dereq_('inherits');
+var EE = require('events').EventEmitter;
+var inherits = require('inherits');
 
 inherits(Stream, EE);
-Stream.Readable = _dereq_('readable-stream/readable.js');
-Stream.Writable = _dereq_('readable-stream/writable.js');
-Stream.Duplex = _dereq_('readable-stream/duplex.js');
-Stream.Transform = _dereq_('readable-stream/transform.js');
-Stream.PassThrough = _dereq_('readable-stream/passthrough.js');
+Stream.Readable = require('readable-stream/readable.js');
+Stream.Writable = require('readable-stream/writable.js');
+Stream.Duplex = require('readable-stream/duplex.js');
+Stream.Transform = require('readable-stream/transform.js');
+Stream.PassThrough = require('readable-stream/passthrough.js');
 
 // Backwards-compat with node 0.4.x
 Stream.Stream = Stream;
@@ -19736,7 +23593,88 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":13,"inherits":39,"readable-stream/duplex.js":100,"readable-stream/passthrough.js":106,"readable-stream/readable.js":107,"readable-stream/transform.js":108,"readable-stream/writable.js":109}],111:[function(_dereq_,module,exports){
+},{"events":18,"inherits":50,"readable-stream/duplex.js":76,"readable-stream/passthrough.js":82,"readable-stream/readable.js":83,"readable-stream/transform.js":84,"readable-stream/writable.js":85}],87:[function(require,module,exports){
+module.exports = require('stream-to').buffer
+},{"stream-to":88}],88:[function(require,module,exports){
+(function (Buffer){
+exports.array = toArray
+exports.buffer = toBuffer
+
+function toArray(stream, callback) {
+  var arr = []
+
+  stream.on('data', onData)
+  stream.once('end', onEnd)
+  stream.once('error', callback)
+  stream.once('error', cleanup)
+  stream.once('close', cleanup)
+
+  function onData(doc) {
+    arr.push(doc)
+  }
+
+  function onEnd() {
+    callback(null, arr)
+    cleanup()
+  }
+
+  function cleanup() {
+    arr = null
+    stream.removeListener('data', onData)
+    stream.removeListener('end', onEnd)
+    stream.removeListener('error', callback)
+    stream.removeListener('error', cleanup)
+    stream.removeListener('close', cleanup)
+  }
+
+  return stream
+}
+
+function toBuffer(stream, callback) {
+  toArray(stream, function (err, arr) {
+    if (err || !arr)
+      callback(err)
+    else
+      callback(null, Buffer.concat(arr))
+  })
+
+  return stream
+}
+}).call(this,require("buffer").Buffer)
+
+},{"buffer":17}],89:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+var util = require('util');
+var stream = require('stream');
+
+module.exports.createReadStream = function (object, options) {
+  return new MultiStream (object, options);
+};
+
+var MultiStream = function (object, options) {
+  if (object instanceof Buffer || typeof object === 'string') {
+    options = options || {};
+    stream.Readable.call(this, {
+      highWaterMark: options.highWaterMark,
+      encoding: options.encoding
+    });
+  } else {
+    stream.Readable.call(this, { objectMode: true });
+  }
+  this._object = object;
+};
+
+util.inherits(MultiStream, stream.Readable);
+
+MultiStream.prototype._read = function () {
+  this.push(this._object);
+  this._object = null;
+};
+}).call(this,require("buffer").Buffer)
+
+},{"buffer":17,"stream":86,"util":93}],90:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19758,7 +23696,7 @@ Stream.prototype.pipe = function(dest, options) {
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-var Buffer = _dereq_('buffer').Buffer;
+var Buffer = require('buffer').Buffer;
 
 var isBufferEncoding = Buffer.isEncoding
   || function(encoding) {
@@ -19959,37 +23897,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":12}],112:[function(_dereq_,module,exports){
-(function (Buffer){
-/**
- * Convert a typed array to a Buffer without a copy
- *
- * Author:   Feross Aboukhadijeh <https://feross.org>
- * License:  MIT
- *
- * `npm install typedarray-to-buffer`
- */
-
-var isTypedArray = _dereq_('is-typedarray').strict
-
-module.exports = function typedarrayToBuffer (arr) {
-  if (isTypedArray(arr)) {
-    // To avoid a copy, use the typed array's underlying ArrayBuffer to back new Buffer
-    var buf = Buffer.from(arr.buffer)
-    if (arr.byteLength !== arr.buffer.byteLength) {
-      // Respect the "view", i.e. byteOffset and byteLength, without doing a copy
-      buf = buf.slice(arr.byteOffset, arr.byteOffset + arr.byteLength)
-    }
-    return buf
-  } else {
-    // Pass through all other types to `Buffer.from`
-    return Buffer.from(arr)
-  }
-}
-
-}).call(this,_dereq_("buffer").Buffer)
-
-},{"buffer":12,"is-typedarray":41}],113:[function(_dereq_,module,exports){
+},{"buffer":17}],91:[function(require,module,exports){
 (function (global){
 
 /**
@@ -20061,7 +23969,605 @@ function config (name) {
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{}],114:[function(_dereq_,module,exports){
+},{}],92:[function(require,module,exports){
+module.exports = function isBuffer(arg) {
+  return arg && typeof arg === 'object'
+    && typeof arg.copy === 'function'
+    && typeof arg.fill === 'function'
+    && typeof arg.readUInt8 === 'function';
+}
+},{}],93:[function(require,module,exports){
+(function (process,global){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+var formatRegExp = /%[sdj%]/g;
+exports.format = function(f) {
+  if (!isString(f)) {
+    var objects = [];
+    for (var i = 0; i < arguments.length; i++) {
+      objects.push(inspect(arguments[i]));
+    }
+    return objects.join(' ');
+  }
+
+  var i = 1;
+  var args = arguments;
+  var len = args.length;
+  var str = String(f).replace(formatRegExp, function(x) {
+    if (x === '%%') return '%';
+    if (i >= len) return x;
+    switch (x) {
+      case '%s': return String(args[i++]);
+      case '%d': return Number(args[i++]);
+      case '%j':
+        try {
+          return JSON.stringify(args[i++]);
+        } catch (_) {
+          return '[Circular]';
+        }
+      default:
+        return x;
+    }
+  });
+  for (var x = args[i]; i < len; x = args[++i]) {
+    if (isNull(x) || !isObject(x)) {
+      str += ' ' + x;
+    } else {
+      str += ' ' + inspect(x);
+    }
+  }
+  return str;
+};
+
+
+// Mark that a method should not be used.
+// Returns a modified function which warns once by default.
+// If --no-deprecation is set, then it is a no-op.
+exports.deprecate = function(fn, msg) {
+  // Allow for deprecating things in the process of starting up.
+  if (isUndefined(global.process)) {
+    return function() {
+      return exports.deprecate(fn, msg).apply(this, arguments);
+    };
+  }
+
+  if (process.noDeprecation === true) {
+    return fn;
+  }
+
+  var warned = false;
+  function deprecated() {
+    if (!warned) {
+      if (process.throwDeprecation) {
+        throw new Error(msg);
+      } else if (process.traceDeprecation) {
+        console.trace(msg);
+      } else {
+        console.error(msg);
+      }
+      warned = true;
+    }
+    return fn.apply(this, arguments);
+  }
+
+  return deprecated;
+};
+
+
+var debugs = {};
+var debugEnviron;
+exports.debuglog = function(set) {
+  if (isUndefined(debugEnviron))
+    debugEnviron = process.env.NODE_DEBUG || '';
+  set = set.toUpperCase();
+  if (!debugs[set]) {
+    if (new RegExp('\\b' + set + '\\b', 'i').test(debugEnviron)) {
+      var pid = process.pid;
+      debugs[set] = function() {
+        var msg = exports.format.apply(exports, arguments);
+        console.error('%s %d: %s', set, pid, msg);
+      };
+    } else {
+      debugs[set] = function() {};
+    }
+  }
+  return debugs[set];
+};
+
+
+/**
+ * Echos the value of a value. Trys to print the value out
+ * in the best way possible given the different types.
+ *
+ * @param {Object} obj The object to print out.
+ * @param {Object} opts Optional options object that alters the output.
+ */
+/* legacy: obj, showHidden, depth, colors*/
+function inspect(obj, opts) {
+  // default options
+  var ctx = {
+    seen: [],
+    stylize: stylizeNoColor
+  };
+  // legacy...
+  if (arguments.length >= 3) ctx.depth = arguments[2];
+  if (arguments.length >= 4) ctx.colors = arguments[3];
+  if (isBoolean(opts)) {
+    // legacy...
+    ctx.showHidden = opts;
+  } else if (opts) {
+    // got an "options" object
+    exports._extend(ctx, opts);
+  }
+  // set default options
+  if (isUndefined(ctx.showHidden)) ctx.showHidden = false;
+  if (isUndefined(ctx.depth)) ctx.depth = 2;
+  if (isUndefined(ctx.colors)) ctx.colors = false;
+  if (isUndefined(ctx.customInspect)) ctx.customInspect = true;
+  if (ctx.colors) ctx.stylize = stylizeWithColor;
+  return formatValue(ctx, obj, ctx.depth);
+}
+exports.inspect = inspect;
+
+
+// http://en.wikipedia.org/wiki/ANSI_escape_code#graphics
+inspect.colors = {
+  'bold' : [1, 22],
+  'italic' : [3, 23],
+  'underline' : [4, 24],
+  'inverse' : [7, 27],
+  'white' : [37, 39],
+  'grey' : [90, 39],
+  'black' : [30, 39],
+  'blue' : [34, 39],
+  'cyan' : [36, 39],
+  'green' : [32, 39],
+  'magenta' : [35, 39],
+  'red' : [31, 39],
+  'yellow' : [33, 39]
+};
+
+// Don't use 'blue' not visible on cmd.exe
+inspect.styles = {
+  'special': 'cyan',
+  'number': 'yellow',
+  'boolean': 'yellow',
+  'undefined': 'grey',
+  'null': 'bold',
+  'string': 'green',
+  'date': 'magenta',
+  // "name": intentionally not styling
+  'regexp': 'red'
+};
+
+
+function stylizeWithColor(str, styleType) {
+  var style = inspect.styles[styleType];
+
+  if (style) {
+    return '\u001b[' + inspect.colors[style][0] + 'm' + str +
+           '\u001b[' + inspect.colors[style][1] + 'm';
+  } else {
+    return str;
+  }
+}
+
+
+function stylizeNoColor(str, styleType) {
+  return str;
+}
+
+
+function arrayToHash(array) {
+  var hash = {};
+
+  array.forEach(function(val, idx) {
+    hash[val] = true;
+  });
+
+  return hash;
+}
+
+
+function formatValue(ctx, value, recurseTimes) {
+  // Provide a hook for user-specified inspect functions.
+  // Check that value is an object with an inspect function on it
+  if (ctx.customInspect &&
+      value &&
+      isFunction(value.inspect) &&
+      // Filter out the util module, it's inspect function is special
+      value.inspect !== exports.inspect &&
+      // Also filter out any prototype objects using the circular check.
+      !(value.constructor && value.constructor.prototype === value)) {
+    var ret = value.inspect(recurseTimes, ctx);
+    if (!isString(ret)) {
+      ret = formatValue(ctx, ret, recurseTimes);
+    }
+    return ret;
+  }
+
+  // Primitive types cannot have properties
+  var primitive = formatPrimitive(ctx, value);
+  if (primitive) {
+    return primitive;
+  }
+
+  // Look up the keys of the object.
+  var keys = Object.keys(value);
+  var visibleKeys = arrayToHash(keys);
+
+  if (ctx.showHidden) {
+    keys = Object.getOwnPropertyNames(value);
+  }
+
+  // IE doesn't make error fields non-enumerable
+  // http://msdn.microsoft.com/en-us/library/ie/dww52sbt(v=vs.94).aspx
+  if (isError(value)
+      && (keys.indexOf('message') >= 0 || keys.indexOf('description') >= 0)) {
+    return formatError(value);
+  }
+
+  // Some type of object without properties can be shortcutted.
+  if (keys.length === 0) {
+    if (isFunction(value)) {
+      var name = value.name ? ': ' + value.name : '';
+      return ctx.stylize('[Function' + name + ']', 'special');
+    }
+    if (isRegExp(value)) {
+      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
+    }
+    if (isDate(value)) {
+      return ctx.stylize(Date.prototype.toString.call(value), 'date');
+    }
+    if (isError(value)) {
+      return formatError(value);
+    }
+  }
+
+  var base = '', array = false, braces = ['{', '}'];
+
+  // Make Array say that they are Array
+  if (isArray(value)) {
+    array = true;
+    braces = ['[', ']'];
+  }
+
+  // Make functions say that they are functions
+  if (isFunction(value)) {
+    var n = value.name ? ': ' + value.name : '';
+    base = ' [Function' + n + ']';
+  }
+
+  // Make RegExps say that they are RegExps
+  if (isRegExp(value)) {
+    base = ' ' + RegExp.prototype.toString.call(value);
+  }
+
+  // Make dates with properties first say the date
+  if (isDate(value)) {
+    base = ' ' + Date.prototype.toUTCString.call(value);
+  }
+
+  // Make error with message first say the error
+  if (isError(value)) {
+    base = ' ' + formatError(value);
+  }
+
+  if (keys.length === 0 && (!array || value.length == 0)) {
+    return braces[0] + base + braces[1];
+  }
+
+  if (recurseTimes < 0) {
+    if (isRegExp(value)) {
+      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
+    } else {
+      return ctx.stylize('[Object]', 'special');
+    }
+  }
+
+  ctx.seen.push(value);
+
+  var output;
+  if (array) {
+    output = formatArray(ctx, value, recurseTimes, visibleKeys, keys);
+  } else {
+    output = keys.map(function(key) {
+      return formatProperty(ctx, value, recurseTimes, visibleKeys, key, array);
+    });
+  }
+
+  ctx.seen.pop();
+
+  return reduceToSingleString(output, base, braces);
+}
+
+
+function formatPrimitive(ctx, value) {
+  if (isUndefined(value))
+    return ctx.stylize('undefined', 'undefined');
+  if (isString(value)) {
+    var simple = '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
+                                             .replace(/'/g, "\\'")
+                                             .replace(/\\"/g, '"') + '\'';
+    return ctx.stylize(simple, 'string');
+  }
+  if (isNumber(value))
+    return ctx.stylize('' + value, 'number');
+  if (isBoolean(value))
+    return ctx.stylize('' + value, 'boolean');
+  // For some reason typeof null is "object", so special case here.
+  if (isNull(value))
+    return ctx.stylize('null', 'null');
+}
+
+
+function formatError(value) {
+  return '[' + Error.prototype.toString.call(value) + ']';
+}
+
+
+function formatArray(ctx, value, recurseTimes, visibleKeys, keys) {
+  var output = [];
+  for (var i = 0, l = value.length; i < l; ++i) {
+    if (hasOwnProperty(value, String(i))) {
+      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
+          String(i), true));
+    } else {
+      output.push('');
+    }
+  }
+  keys.forEach(function(key) {
+    if (!key.match(/^\d+$/)) {
+      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
+          key, true));
+    }
+  });
+  return output;
+}
+
+
+function formatProperty(ctx, value, recurseTimes, visibleKeys, key, array) {
+  var name, str, desc;
+  desc = Object.getOwnPropertyDescriptor(value, key) || { value: value[key] };
+  if (desc.get) {
+    if (desc.set) {
+      str = ctx.stylize('[Getter/Setter]', 'special');
+    } else {
+      str = ctx.stylize('[Getter]', 'special');
+    }
+  } else {
+    if (desc.set) {
+      str = ctx.stylize('[Setter]', 'special');
+    }
+  }
+  if (!hasOwnProperty(visibleKeys, key)) {
+    name = '[' + key + ']';
+  }
+  if (!str) {
+    if (ctx.seen.indexOf(desc.value) < 0) {
+      if (isNull(recurseTimes)) {
+        str = formatValue(ctx, desc.value, null);
+      } else {
+        str = formatValue(ctx, desc.value, recurseTimes - 1);
+      }
+      if (str.indexOf('\n') > -1) {
+        if (array) {
+          str = str.split('\n').map(function(line) {
+            return '  ' + line;
+          }).join('\n').substr(2);
+        } else {
+          str = '\n' + str.split('\n').map(function(line) {
+            return '   ' + line;
+          }).join('\n');
+        }
+      }
+    } else {
+      str = ctx.stylize('[Circular]', 'special');
+    }
+  }
+  if (isUndefined(name)) {
+    if (array && key.match(/^\d+$/)) {
+      return str;
+    }
+    name = JSON.stringify('' + key);
+    if (name.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
+      name = name.substr(1, name.length - 2);
+      name = ctx.stylize(name, 'name');
+    } else {
+      name = name.replace(/'/g, "\\'")
+                 .replace(/\\"/g, '"')
+                 .replace(/(^"|"$)/g, "'");
+      name = ctx.stylize(name, 'string');
+    }
+  }
+
+  return name + ': ' + str;
+}
+
+
+function reduceToSingleString(output, base, braces) {
+  var numLinesEst = 0;
+  var length = output.reduce(function(prev, cur) {
+    numLinesEst++;
+    if (cur.indexOf('\n') >= 0) numLinesEst++;
+    return prev + cur.replace(/\u001b\[\d\d?m/g, '').length + 1;
+  }, 0);
+
+  if (length > 60) {
+    return braces[0] +
+           (base === '' ? '' : base + '\n ') +
+           ' ' +
+           output.join(',\n  ') +
+           ' ' +
+           braces[1];
+  }
+
+  return braces[0] + base + ' ' + output.join(', ') + ' ' + braces[1];
+}
+
+
+// NOTE: These type checking functions intentionally don't use `instanceof`
+// because it is fragile and can be easily faked with `Object.create()`.
+function isArray(ar) {
+  return Array.isArray(ar);
+}
+exports.isArray = isArray;
+
+function isBoolean(arg) {
+  return typeof arg === 'boolean';
+}
+exports.isBoolean = isBoolean;
+
+function isNull(arg) {
+  return arg === null;
+}
+exports.isNull = isNull;
+
+function isNullOrUndefined(arg) {
+  return arg == null;
+}
+exports.isNullOrUndefined = isNullOrUndefined;
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+exports.isNumber = isNumber;
+
+function isString(arg) {
+  return typeof arg === 'string';
+}
+exports.isString = isString;
+
+function isSymbol(arg) {
+  return typeof arg === 'symbol';
+}
+exports.isSymbol = isSymbol;
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+exports.isUndefined = isUndefined;
+
+function isRegExp(re) {
+  return isObject(re) && objectToString(re) === '[object RegExp]';
+}
+exports.isRegExp = isRegExp;
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+exports.isObject = isObject;
+
+function isDate(d) {
+  return isObject(d) && objectToString(d) === '[object Date]';
+}
+exports.isDate = isDate;
+
+function isError(e) {
+  return isObject(e) &&
+      (objectToString(e) === '[object Error]' || e instanceof Error);
+}
+exports.isError = isError;
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+exports.isFunction = isFunction;
+
+function isPrimitive(arg) {
+  return arg === null ||
+         typeof arg === 'boolean' ||
+         typeof arg === 'number' ||
+         typeof arg === 'string' ||
+         typeof arg === 'symbol' ||  // ES6 symbol
+         typeof arg === 'undefined';
+}
+exports.isPrimitive = isPrimitive;
+
+exports.isBuffer = require('./support/isBuffer');
+
+function objectToString(o) {
+  return Object.prototype.toString.call(o);
+}
+
+
+function pad(n) {
+  return n < 10 ? '0' + n.toString(10) : n.toString(10);
+}
+
+
+var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
+              'Oct', 'Nov', 'Dec'];
+
+// 26 Feb 16:19:34
+function timestamp() {
+  var d = new Date();
+  var time = [pad(d.getHours()),
+              pad(d.getMinutes()),
+              pad(d.getSeconds())].join(':');
+  return [d.getDate(), months[d.getMonth()], time].join(' ');
+}
+
+
+// log is just a thin wrapper to console.log that prepends a timestamp
+exports.log = function() {
+  console.log('%s - %s', timestamp(), exports.format.apply(exports, arguments));
+};
+
+
+/**
+ * Inherit the prototype methods from one constructor into another.
+ *
+ * The Function.prototype.inherits from lang.js rewritten as a standalone
+ * function (not on Function.prototype). NOTE: If this file is to be loaded
+ * during bootstrapping this function needs to be rewritten using some native
+ * functions as prototype setup using normal JavaScript does not work as
+ * expected during bootstrapping (see mirror.js in r114903).
+ *
+ * @param {function} ctor Constructor function which needs to inherit the
+ *     prototype.
+ * @param {function} superCtor Constructor function to inherit prototype from.
+ */
+exports.inherits = require('inherits');
+
+exports._extend = function(origin, add) {
+  // Don't do anything if add isn't an object
+  if (!add || !isObject(add)) return origin;
+
+  var keys = Object.keys(add);
+  var i = keys.length;
+  while (i--) {
+    origin[keys[i]] = add[keys[i]];
+  }
+  return origin;
+};
+
+function hasOwnProperty(obj, prop) {
+  return Object.prototype.hasOwnProperty.call(obj, prop);
+}
+
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+
+},{"./support/isBuffer":92,"_process":75,"inherits":50}],94:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var assign, isArray, isEmpty, isFunction, isObject, isPlainObject,
@@ -20136,7 +24642,7 @@ function config (name) {
 
 }).call(this);
 
-},{}],115:[function(_dereq_,module,exports){
+},{}],95:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute;
@@ -20169,14 +24675,14 @@ function config (name) {
 
 }).call(this);
 
-},{}],116:[function(_dereq_,module,exports){
+},{}],96:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLNode,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLCData = (function(superClass) {
     extend(XMLCData, superClass);
@@ -20203,14 +24709,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],117:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],97:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLComment, XMLNode,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLComment = (function(superClass) {
     extend(XMLComment, superClass);
@@ -20237,14 +24743,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],118:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],98:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDAttList, XMLNode,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLDTDAttList = (function(superClass) {
     extend(XMLDTDAttList, superClass);
@@ -20289,14 +24795,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],119:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],99:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDElement, XMLNode,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLDTDElement = (function(superClass) {
     extend(XMLDTDElement, superClass);
@@ -20326,16 +24832,16 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],120:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],100:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDEntity, XMLNode, isObject,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  isObject = _dereq_('./Utility').isObject;
+  isObject = require('./Utility').isObject;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLDTDEntity = (function(superClass) {
     extend(XMLDTDEntity, superClass);
@@ -20384,14 +24890,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLNode":127}],121:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLNode":107}],101:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDNotation, XMLNode,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLDTDNotation = (function(superClass) {
     extend(XMLDTDNotation, superClass);
@@ -20423,16 +24929,16 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],122:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],102:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDeclaration, XMLNode, isObject,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  isObject = _dereq_('./Utility').isObject;
+  isObject = require('./Utility').isObject;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLDeclaration = (function(superClass) {
     extend(XMLDeclaration, superClass);
@@ -20465,24 +24971,24 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLNode":127}],123:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLNode":107}],103:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDocType, XMLNode, isObject,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  isObject = _dereq_('./Utility').isObject;
+  isObject = require('./Utility').isObject;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
-  XMLDTDAttList = _dereq_('./XMLDTDAttList');
+  XMLDTDAttList = require('./XMLDTDAttList');
 
-  XMLDTDEntity = _dereq_('./XMLDTDEntity');
+  XMLDTDEntity = require('./XMLDTDEntity');
 
-  XMLDTDElement = _dereq_('./XMLDTDElement');
+  XMLDTDElement = require('./XMLDTDElement');
 
-  XMLDTDNotation = _dereq_('./XMLDTDNotation');
+  XMLDTDNotation = require('./XMLDTDNotation');
 
   module.exports = XMLDocType = (function(superClass) {
     extend(XMLDocType, superClass);
@@ -20574,20 +25080,20 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLDTDAttList":118,"./XMLDTDElement":119,"./XMLDTDEntity":120,"./XMLDTDNotation":121,"./XMLNode":127}],124:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLDTDAttList":98,"./XMLDTDElement":99,"./XMLDTDEntity":100,"./XMLDTDNotation":101,"./XMLNode":107}],104:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDocument, XMLNode, XMLStringWriter, XMLStringifier, isPlainObject,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  isPlainObject = _dereq_('./Utility').isPlainObject;
+  isPlainObject = require('./Utility').isPlainObject;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
-  XMLStringifier = _dereq_('./XMLStringifier');
+  XMLStringifier = require('./XMLStringifier');
 
-  XMLStringWriter = _dereq_('./XMLStringWriter');
+  XMLStringWriter = require('./XMLStringWriter');
 
   module.exports = XMLDocument = (function(superClass) {
     extend(XMLDocument, superClass);
@@ -20624,43 +25130,43 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLNode":127,"./XMLStringWriter":131,"./XMLStringifier":132}],125:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLNode":107,"./XMLStringWriter":111,"./XMLStringifier":112}],105:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute, XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLDocumentCB, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStringWriter, XMLStringifier, XMLText, isFunction, isObject, isPlainObject, ref,
     hasProp = {}.hasOwnProperty;
 
-  ref = _dereq_('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction, isPlainObject = ref.isPlainObject;
+  ref = require('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction, isPlainObject = ref.isPlainObject;
 
-  XMLElement = _dereq_('./XMLElement');
+  XMLElement = require('./XMLElement');
 
-  XMLCData = _dereq_('./XMLCData');
+  XMLCData = require('./XMLCData');
 
-  XMLComment = _dereq_('./XMLComment');
+  XMLComment = require('./XMLComment');
 
-  XMLRaw = _dereq_('./XMLRaw');
+  XMLRaw = require('./XMLRaw');
 
-  XMLText = _dereq_('./XMLText');
+  XMLText = require('./XMLText');
 
-  XMLProcessingInstruction = _dereq_('./XMLProcessingInstruction');
+  XMLProcessingInstruction = require('./XMLProcessingInstruction');
 
-  XMLDeclaration = _dereq_('./XMLDeclaration');
+  XMLDeclaration = require('./XMLDeclaration');
 
-  XMLDocType = _dereq_('./XMLDocType');
+  XMLDocType = require('./XMLDocType');
 
-  XMLDTDAttList = _dereq_('./XMLDTDAttList');
+  XMLDTDAttList = require('./XMLDTDAttList');
 
-  XMLDTDEntity = _dereq_('./XMLDTDEntity');
+  XMLDTDEntity = require('./XMLDTDEntity');
 
-  XMLDTDElement = _dereq_('./XMLDTDElement');
+  XMLDTDElement = require('./XMLDTDElement');
 
-  XMLDTDNotation = _dereq_('./XMLDTDNotation');
+  XMLDTDNotation = require('./XMLDTDNotation');
 
-  XMLAttribute = _dereq_('./XMLAttribute');
+  XMLAttribute = require('./XMLAttribute');
 
-  XMLStringifier = _dereq_('./XMLStringifier');
+  XMLStringifier = require('./XMLStringifier');
 
-  XMLStringWriter = _dereq_('./XMLStringWriter');
+  XMLStringWriter = require('./XMLStringWriter');
 
   module.exports = XMLDocumentCB = (function() {
     function XMLDocumentCB(options, onData, onEnd) {
@@ -21028,18 +25534,18 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLAttribute":115,"./XMLCData":116,"./XMLComment":117,"./XMLDTDAttList":118,"./XMLDTDElement":119,"./XMLDTDEntity":120,"./XMLDTDNotation":121,"./XMLDeclaration":122,"./XMLDocType":123,"./XMLElement":126,"./XMLProcessingInstruction":128,"./XMLRaw":129,"./XMLStringWriter":131,"./XMLStringifier":132,"./XMLText":133}],126:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLAttribute":95,"./XMLCData":96,"./XMLComment":97,"./XMLDTDAttList":98,"./XMLDTDElement":99,"./XMLDTDEntity":100,"./XMLDTDNotation":101,"./XMLDeclaration":102,"./XMLDocType":103,"./XMLElement":106,"./XMLProcessingInstruction":108,"./XMLRaw":109,"./XMLStringWriter":111,"./XMLStringifier":112,"./XMLText":113}],106:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute, XMLElement, XMLNode, isFunction, isObject, ref,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  ref = _dereq_('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction;
+  ref = require('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
-  XMLAttribute = _dereq_('./XMLAttribute');
+  XMLAttribute = require('./XMLAttribute');
 
   module.exports = XMLElement = (function(superClass) {
     extend(XMLElement, superClass);
@@ -21141,13 +25647,13 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLAttribute":115,"./XMLNode":127}],127:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLAttribute":95,"./XMLNode":107}],107:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDeclaration, XMLDocType, XMLElement, XMLNode, XMLProcessingInstruction, XMLRaw, XMLText, isEmpty, isFunction, isObject, ref,
     hasProp = {}.hasOwnProperty;
 
-  ref = _dereq_('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction, isEmpty = ref.isEmpty;
+  ref = require('./Utility'), isObject = ref.isObject, isFunction = ref.isFunction, isEmpty = ref.isEmpty;
 
   XMLElement = null;
 
@@ -21174,14 +25680,14 @@ function config (name) {
       }
       this.children = [];
       if (!XMLElement) {
-        XMLElement = _dereq_('./XMLElement');
-        XMLCData = _dereq_('./XMLCData');
-        XMLComment = _dereq_('./XMLComment');
-        XMLDeclaration = _dereq_('./XMLDeclaration');
-        XMLDocType = _dereq_('./XMLDocType');
-        XMLRaw = _dereq_('./XMLRaw');
-        XMLText = _dereq_('./XMLText');
-        XMLProcessingInstruction = _dereq_('./XMLProcessingInstruction');
+        XMLElement = require('./XMLElement');
+        XMLCData = require('./XMLCData');
+        XMLComment = require('./XMLComment');
+        XMLDeclaration = require('./XMLDeclaration');
+        XMLDocType = require('./XMLDocType');
+        XMLRaw = require('./XMLRaw');
+        XMLText = require('./XMLText');
+        XMLProcessingInstruction = require('./XMLProcessingInstruction');
       }
     }
 
@@ -21575,14 +26081,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLCData":116,"./XMLComment":117,"./XMLDeclaration":122,"./XMLDocType":123,"./XMLElement":126,"./XMLProcessingInstruction":128,"./XMLRaw":129,"./XMLText":133}],128:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLCData":96,"./XMLComment":97,"./XMLDeclaration":102,"./XMLDocType":103,"./XMLElement":106,"./XMLProcessingInstruction":108,"./XMLRaw":109,"./XMLText":113}],108:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLProcessingInstruction,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLProcessingInstruction = (function(superClass) {
     extend(XMLProcessingInstruction, superClass);
@@ -21612,14 +26118,14 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],129:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],109:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLRaw,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLRaw = (function(superClass) {
     extend(XMLRaw, superClass);
@@ -21646,38 +26152,38 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],130:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],110:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStreamWriter, XMLText, XMLWriterBase,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLDeclaration = _dereq_('./XMLDeclaration');
+  XMLDeclaration = require('./XMLDeclaration');
 
-  XMLDocType = _dereq_('./XMLDocType');
+  XMLDocType = require('./XMLDocType');
 
-  XMLCData = _dereq_('./XMLCData');
+  XMLCData = require('./XMLCData');
 
-  XMLComment = _dereq_('./XMLComment');
+  XMLComment = require('./XMLComment');
 
-  XMLElement = _dereq_('./XMLElement');
+  XMLElement = require('./XMLElement');
 
-  XMLRaw = _dereq_('./XMLRaw');
+  XMLRaw = require('./XMLRaw');
 
-  XMLText = _dereq_('./XMLText');
+  XMLText = require('./XMLText');
 
-  XMLProcessingInstruction = _dereq_('./XMLProcessingInstruction');
+  XMLProcessingInstruction = require('./XMLProcessingInstruction');
 
-  XMLDTDAttList = _dereq_('./XMLDTDAttList');
+  XMLDTDAttList = require('./XMLDTDAttList');
 
-  XMLDTDElement = _dereq_('./XMLDTDElement');
+  XMLDTDElement = require('./XMLDTDElement');
 
-  XMLDTDEntity = _dereq_('./XMLDTDEntity');
+  XMLDTDEntity = require('./XMLDTDEntity');
 
-  XMLDTDNotation = _dereq_('./XMLDTDNotation');
+  XMLDTDNotation = require('./XMLDTDNotation');
 
-  XMLWriterBase = _dereq_('./XMLWriterBase');
+  XMLWriterBase = require('./XMLWriterBase');
 
   module.exports = XMLStreamWriter = (function(superClass) {
     extend(XMLStreamWriter, superClass);
@@ -21927,38 +26433,38 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLCData":116,"./XMLComment":117,"./XMLDTDAttList":118,"./XMLDTDElement":119,"./XMLDTDEntity":120,"./XMLDTDNotation":121,"./XMLDeclaration":122,"./XMLDocType":123,"./XMLElement":126,"./XMLProcessingInstruction":128,"./XMLRaw":129,"./XMLText":133,"./XMLWriterBase":134}],131:[function(_dereq_,module,exports){
+},{"./XMLCData":96,"./XMLComment":97,"./XMLDTDAttList":98,"./XMLDTDElement":99,"./XMLDTDEntity":100,"./XMLDTDNotation":101,"./XMLDeclaration":102,"./XMLDocType":103,"./XMLElement":106,"./XMLProcessingInstruction":108,"./XMLRaw":109,"./XMLText":113,"./XMLWriterBase":114}],111:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStringWriter, XMLText, XMLWriterBase,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLDeclaration = _dereq_('./XMLDeclaration');
+  XMLDeclaration = require('./XMLDeclaration');
 
-  XMLDocType = _dereq_('./XMLDocType');
+  XMLDocType = require('./XMLDocType');
 
-  XMLCData = _dereq_('./XMLCData');
+  XMLCData = require('./XMLCData');
 
-  XMLComment = _dereq_('./XMLComment');
+  XMLComment = require('./XMLComment');
 
-  XMLElement = _dereq_('./XMLElement');
+  XMLElement = require('./XMLElement');
 
-  XMLRaw = _dereq_('./XMLRaw');
+  XMLRaw = require('./XMLRaw');
 
-  XMLText = _dereq_('./XMLText');
+  XMLText = require('./XMLText');
 
-  XMLProcessingInstruction = _dereq_('./XMLProcessingInstruction');
+  XMLProcessingInstruction = require('./XMLProcessingInstruction');
 
-  XMLDTDAttList = _dereq_('./XMLDTDAttList');
+  XMLDTDAttList = require('./XMLDTDAttList');
 
-  XMLDTDElement = _dereq_('./XMLDTDElement');
+  XMLDTDElement = require('./XMLDTDElement');
 
-  XMLDTDEntity = _dereq_('./XMLDTDEntity');
+  XMLDTDEntity = require('./XMLDTDEntity');
 
-  XMLDTDNotation = _dereq_('./XMLDTDNotation');
+  XMLDTDNotation = require('./XMLDTDNotation');
 
-  XMLWriterBase = _dereq_('./XMLWriterBase');
+  XMLWriterBase = require('./XMLWriterBase');
 
   module.exports = XMLStringWriter = (function(superClass) {
     extend(XMLStringWriter, superClass);
@@ -22263,7 +26769,7 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLCData":116,"./XMLComment":117,"./XMLDTDAttList":118,"./XMLDTDElement":119,"./XMLDTDEntity":120,"./XMLDTDNotation":121,"./XMLDeclaration":122,"./XMLDocType":123,"./XMLElement":126,"./XMLProcessingInstruction":128,"./XMLRaw":129,"./XMLText":133,"./XMLWriterBase":134}],132:[function(_dereq_,module,exports){
+},{"./XMLCData":96,"./XMLComment":97,"./XMLDTDAttList":98,"./XMLDTDElement":99,"./XMLDTDEntity":100,"./XMLDTDNotation":101,"./XMLDeclaration":102,"./XMLDocType":103,"./XMLElement":106,"./XMLProcessingInstruction":108,"./XMLRaw":109,"./XMLText":113,"./XMLWriterBase":114}],112:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLStringifier,
@@ -22428,14 +26934,14 @@ function config (name) {
 
 }).call(this);
 
-},{}],133:[function(_dereq_,module,exports){
+},{}],113:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLText,
     extend = function(child, parent) { for (var key in parent) { if (hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     hasProp = {}.hasOwnProperty;
 
-  XMLNode = _dereq_('./XMLNode');
+  XMLNode = require('./XMLNode');
 
   module.exports = XMLText = (function(superClass) {
     extend(XMLText, superClass);
@@ -22462,7 +26968,7 @@ function config (name) {
 
 }).call(this);
 
-},{"./XMLNode":127}],134:[function(_dereq_,module,exports){
+},{"./XMLNode":107}],114:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLWriterBase,
@@ -22554,20 +27060,20 @@ function config (name) {
 
 }).call(this);
 
-},{}],135:[function(_dereq_,module,exports){
+},{}],115:[function(require,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDocument, XMLDocumentCB, XMLStreamWriter, XMLStringWriter, assign, isFunction, ref;
 
-  ref = _dereq_('./Utility'), assign = ref.assign, isFunction = ref.isFunction;
+  ref = require('./Utility'), assign = ref.assign, isFunction = ref.isFunction;
 
-  XMLDocument = _dereq_('./XMLDocument');
+  XMLDocument = require('./XMLDocument');
 
-  XMLDocumentCB = _dereq_('./XMLDocumentCB');
+  XMLDocumentCB = require('./XMLDocumentCB');
 
-  XMLStringWriter = _dereq_('./XMLStringWriter');
+  XMLStringWriter = require('./XMLStringWriter');
 
-  XMLStreamWriter = _dereq_('./XMLStreamWriter');
+  XMLStreamWriter = require('./XMLStreamWriter');
 
   module.exports.create = function(name, xmldec, doctype, options) {
     var doc, root;
@@ -22609,7 +27115,7 @@ function config (name) {
 
 }).call(this);
 
-},{"./Utility":114,"./XMLDocument":124,"./XMLDocumentCB":125,"./XMLStreamWriter":130,"./XMLStringWriter":131}],136:[function(_dereq_,module,exports){
+},{"./Utility":94,"./XMLDocument":104,"./XMLDocumentCB":105,"./XMLStreamWriter":110,"./XMLStringWriter":111}],116:[function(require,module,exports){
 function DOMParser(options){
 	this.options = options ||{locator:{}};
 	
@@ -22856,13 +27362,13 @@ function appendElement (hander,node) {
 }//appendChild and setAttributeNS are preformance key
 
 //if(typeof require == 'function'){
-	var XMLReader = _dereq_('./sax').XMLReader;
-	var DOMImplementation = exports.DOMImplementation = _dereq_('./dom').DOMImplementation;
-	exports.XMLSerializer = _dereq_('./dom').XMLSerializer ;
+	var XMLReader = require('./sax').XMLReader;
+	var DOMImplementation = exports.DOMImplementation = require('./dom').DOMImplementation;
+	exports.XMLSerializer = require('./dom').XMLSerializer ;
 	exports.DOMParser = DOMParser;
 //}
 
-},{"./dom":137,"./sax":138}],137:[function(_dereq_,module,exports){
+},{"./dom":117,"./sax":118}],117:[function(require,module,exports){
 /*
  * DOM Level 2
  * Object DOMException
@@ -24108,7 +28614,7 @@ try{
 	exports.XMLSerializer = XMLSerializer;
 //}
 
-},{}],138:[function(_dereq_,module,exports){
+},{}],118:[function(require,module,exports){
 //[4]   	NameStartChar	   ::=   	":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
 //[4a]   	NameChar	   ::=   	NameStartChar | "-" | "." | [0-9] | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]
 //[5]   	Name	   ::=   	NameStartChar (NameChar)*

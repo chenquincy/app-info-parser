@@ -8,14 +8,21 @@
 </head>
 <body>
   <input type="file" name="file" id="file" onchange="fileSelect()">
-  <script src="../../dist/app-info-parser.min.js"></script>
+  <div id="file-list"></div>
+  <script src="../dist/app-info-parser.min.js"></script>
   <script>
     function fileSelect () {
       const files = document.getElementById('file').files
       const parser = new AppInfoParser(files[0])
       parser.parse().then(result => {
-        console.log('app info ----> ', result)
-        console.log('file buffer ----> ', parser.file)
+        var img = document.createElement('img')
+        img.src = result.icon
+        document.getElementById('file-list').appendChild(img);
+        var div = document.createElement('div')
+        div.textContent = result['package'] ?
+          result['package'] + ' ' + result['versionName'] :
+          result['CFBundleName'] + ' ' + result['CFBundleShortVersionString']
+        document.getElementById('file-list').appendChild(div)
       }).catch(err => {
         console.log('err ----> ', err)
       })

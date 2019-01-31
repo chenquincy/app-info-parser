@@ -25,8 +25,6 @@ yarn add app-info-parser
 
 ## Getting started
 
-
-
 ### NPM Use
 
 ``` javascript
@@ -34,7 +32,7 @@ const AppInfoParser = require('app-info-parser')
 const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa
 parser.parse().then(result => {
   console.log('app info ----> ', result)
-  console.log('file buffer ----> ', parser.file)
+  console.log('icon base64 ----> ', result.icon)
 }).catch(err => {
   console.log('err ----> ', err)
 })
@@ -51,11 +49,52 @@ function fileSelect () {
   const parser = new AppInfoParser(files[0])
   parser.parse().then(result => {
     console.log('app info ----> ', result)
-    console.log('file buffer ----> ', parser.file)
+    console.log('icon base64 ----> ', result.icon)
   }).catch(err => {
     console.log('err ----> ', err)
   })
 }
 </script>
 ```
+
+### Demand loading
+
+> If you only need one Parser, look here.
+
+#### ApkParser
+
+``` javascript
+const ApkParser = require('app-info-parser/src/apk')
+const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa
+parser.parse().then(result => {
+  console.log('app info ----> ', result)
+  console.log('icon base64 ----> ', result.icon)
+}).catch(err => {
+  console.log('err ----> ', err)
+})
+```
+
+#### IpaParser
+
+``` javascript
+const IpaParser = require('app-info-parser/src/ipa')
+const parser = new AppInfoParser('../packages/test.ipa') // or xxx.ipa
+parser.parse().then(result => {
+  console.log('app info ----> ', result)
+  console.log('icon base64 ----> ', result.icon)
+}).catch(err => {
+  console.log('err ----> ', err)
+})
+```
+
+
+
+## API Referrer
+
+### AppInfoParser | ApkParser | IpaParser
+
+* **constructor(file)**
+  * `file` Blob or File in browser, Path in Node
+* **parse: () => Promise<Object>** parse file
+
 

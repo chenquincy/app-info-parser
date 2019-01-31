@@ -1,16 +1,12 @@
 {
   "name": "app-info-parser",
-  "version": "0.0.8",
+  "version": "0.1.0",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
-  "browser": {
-    "./lib/index.js": "./lib/browser.js",
-    "./src/index.js": "./src/browser.js"
-  },
   "scripts": {
     "test": "node ./example/node.js",
     "build": "rimraf src && babel lib -d src",
-    "build:browser": "rimraf dist/* && browserify lib/browser.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
+    "build:browser": "rimraf dist/* && browserify lib/index.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
     "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\""
   },
   "keywords": [
@@ -24,11 +20,11 @@
   "author": "Quincy Chen <mail@chenquincy.cn>",
   "license": "MIT",
   "dependencies": {
-    "assert": "^1.4.1",
     "bplist-parser": "^0.1.0",
-    "jszip": "^3.1.5",
-    "plist": "^3.0.1",
-    "typedarray-to-buffer": "^3.0.4"
+    "bytebuffer": "^5.0.1",
+    "cgbi-to-png": "^1.0.7",
+    "isomorphic-unzip": "^1.1.1",
+    "plist": "^3.0.1"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",
