@@ -179,8 +179,8 @@ var IpaParser = function (_Zip) {
       // 解析 plist
       var plistInfo = this._parsePlist(buffers[PlistName]);
       // 解析 mobileprovision
-      // const provisionInfo = this._parseProvision(buffers[ProvisionName])
-      // plistInfo.mobileProvision = provisionInfo
+      var provisionInfo = this._parseProvision(buffers[ProvisionName]);
+      plistInfo.mobileProvision = provisionInfo;
 
       // 解析 ipa安装包图标
       var iconRegex = new RegExp(findIpaInfoIcon(plistInfo).toLowerCase());
