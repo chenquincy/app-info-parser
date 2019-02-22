@@ -41,18 +41,25 @@ var ApkParser = function (_Zip) {
   _createClass(ApkParser, [{
     key: 'parse',
     value: async function parse() {
-      var buffers = await this.getEntries([ManifestName, ResourceName]);
-      // 解析 manifest
-      var apkInfo = this._parseManifest(buffers[ManifestName]);
-      // 解析 resourcemap
-      var resourceMap = this._parseresourceMap(buffers[ResourceName]);
-      // 结合resourcemap再次解析apkInfo
-      apkInfo = mapInfoResource(apkInfo, resourceMap);
-      // 获取icon base64值
-      var iconBuffer = await this.getEntry(findApkInfoIcon(apkInfo));
-      apkInfo.icon = getBase64FromBuffer(iconBuffer);
+      try {
+        var buffers = await this.getEntries([ManifestName, ResourceName]);
+        if (!buffers[ManifestName]) {
+          throw new Error('AndroidManifest.xml can\'t be found.');
+        }
+        // 解析 manifest
+        var apkInfo = this._parseManifest(buffers[ManifestName]);
+        // 解析 resourcemap
+        var resourceMap = this._parseresourceMap(buffers[ResourceName]);
+        // 结合resourcemap再次解析apkInfo
+        apkInfo = mapInfoResource(apkInfo, resourceMap);
+        // 获取icon base64值
+        var iconBuffer = await this.getEntry(findApkInfoIcon(apkInfo));
+        apkInfo.icon = getBase64FromBuffer(iconBuffer);
 
-      return apkInfo;
+        return apkInfo;
+      } catch (e) {
+        throw e;
+      }
     }
   }, {
     key: '_parseManifest',
@@ -175,20 +182,27 @@ var IpaParser = function (_Zip) {
   _createClass(IpaParser, [{
     key: 'parse',
     value: async function parse() {
-      var buffers = await this.getEntries([PlistName, ProvisionName]);
-      // 解析 plist
-      var plistInfo = this._parsePlist(buffers[PlistName]);
-      // 解析 mobileprovision
-      var provisionInfo = this._parseProvision(buffers[ProvisionName]);
-      plistInfo.mobileProvision = provisionInfo;
+      try {
+        var buffers = await this.getEntries([PlistName, ProvisionName]);
+        if (!buffers[PlistName]) {
+          throw new Error('Info.plist can\'t be found.');
+        }
+        // 解析 plist
+        var plistInfo = this._parsePlist(buffers[PlistName]);
+        // 解析 mobileprovision
+        var provisionInfo = this._parseProvision(buffers[ProvisionName]);
+        plistInfo.mobileProvision = provisionInfo;
 
-      // 解析 ipa安装包图标
-      var iconRegex = new RegExp(findIpaInfoIcon(plistInfo).toLowerCase());
-      var iconBuffer = await this.getEntry(iconRegex);
-      // ipa安装包的图标被特殊处理过，需要经过转换
-      plistInfo.icon = getBase64FromBuffer(cgbiToPng.revert(iconBuffer));
+        // 解析 ipa安装包图标
+        var iconRegex = new RegExp(findIpaInfoIcon(plistInfo).toLowerCase());
+        var iconBuffer = await this.getEntry(iconRegex);
+        // ipa安装包的图标被特殊处理过，需要经过转换
+        plistInfo.icon = getBase64FromBuffer(cgbiToPng.revert(iconBuffer));
 
-      return plistInfo;
+        return plistInfo;
+      } catch (e) {
+        throw e;
+      }
     }
     /**
      * 解析plist文件
@@ -205,8 +219,7 @@ var IpaParser = function (_Zip) {
       } else if (bufferType === 98) {
         result = parseBplist(buffer)[0];
       } else {
-        console.error('Unknow plist buffer type.');
-        result = {};
+        throw new Error('Unknow plist buffer type.');
       }
       return result;
     }
@@ -388,7 +401,7 @@ ResourceFinder.prototype.processResourceTable = function (resourceBuffer) {
 
       realPackageCount++;
     } else {
-      console.error("Unsupported type");
+      throw new Error("Unsupported type");
     }
 
     bb.offset = pos + s;
@@ -873,7 +886,7 @@ function findApkInfoIcon(info) {
 
     if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
   } else {
-    console.error('Unexpected icon type,', info.application.icon);
+    throw new Error('Unexpected icon type: ', info.application.icon);
   }
 }
 
@@ -1924,6 +1937,7 @@ var Zip = function () {
 
       return new Promise(function (resolve, reject) {
         _this.unzip.getBuffer(regexs, { type: type }, function (err, buffers) {
+          console.log('err ----> ', buffers);
           err ? reject(err) : resolve(buffers);
         });
       });
