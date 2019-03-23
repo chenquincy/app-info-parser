@@ -878,7 +878,6 @@ function findApkInfoIcon(info) {
         maxDpiIcon.icon = info.application.icon[0] || '';
         resultMap['applicataion-icon-120'] = maxDpiIcon.icon;
       }
-
       return {
         v: maxDpiIcon.icon
       };
@@ -912,6 +911,18 @@ function getBase64FromBuffer(buffer) {
   return 'data:image/png;base64,' + buffer.toString('base64');
 }
 
+/**
+ * 去除unicode空字符
+ * @param {String} str
+ */
+function decodeNullUnicode(str) {
+  if (typeof str === 'string') {
+    // eslint-disable-next-line
+    str = str.replace(/\u0000/g, '');
+  }
+  return str;
+}
+
 module.exports = {
   isArray: isArray,
   isObject: isObject,
@@ -920,7 +931,8 @@ module.exports = {
   mapInfoResource: mapInfoResource,
   findApkInfoIcon: findApkInfoIcon,
   findIpaInfoIcon: findIpaInfoIcon,
-  getBase64FromBuffer: getBase64FromBuffer
+  getBase64FromBuffer: getBase64FromBuffer,
+  decodeNullUnicode: decodeNullUnicode
 };
 
 },{}],6:[function(require,module,exports){
@@ -1901,7 +1913,8 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 var Unzip = require('isomorphic-unzip');
 
 var _require = require('./utils'),
-    isBrowser = _require.isBrowser;
+    isBrowser = _require.isBrowser,
+    decodeNullUnicode = _require.decodeNullUnicode;
 
 var Zip = function () {
   function Zip(file) {
@@ -1935,6 +1948,9 @@ var Zip = function () {
 
       var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'buffer';
 
+      regexs = regexs.map(function (regex) {
+        return decodeNullUnicode(regex);
+      });
       return new Promise(function (resolve, reject) {
         _this.unzip.getBuffer(regexs, { type: type }, function (err, buffers) {
           console.log('err ----> ', buffers);
@@ -1949,6 +1965,7 @@ var Zip = function () {
 
       var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'buffer';
 
+      regex = decodeNullUnicode(regex);
       return new Promise(function (resolve, reject) {
         _this2.unzip.getBuffer([regex], { type: type }, function (err, buffers) {
           err ? reject(err) : resolve(buffers[regex]);
