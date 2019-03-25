@@ -65,7 +65,7 @@ function fileSelect () {
 
 ``` javascript
 const ApkParser = require('app-info-parser/src/apk')
-const parser = new AppInfoParser('../packages/test.apk')
+const parser = new ApkParser('../packages/test.apk')
 parser.parse().then(result => {
   console.log('app info ----> ', result)
   console.log('icon base64 ----> ', result.icon)
@@ -78,7 +78,7 @@ parser.parse().then(result => {
 
 ``` javascript
 const IpaParser = require('app-info-parser/src/ipa')
-const parser = new AppInfoParser('../packages/test.ipa')
+const parser = new IpaParser('../packages/test.ipa')
 parser.parse().then(result => {
   console.log('app info ----> ', result)
   console.log('icon base64 ----> ', result.icon)

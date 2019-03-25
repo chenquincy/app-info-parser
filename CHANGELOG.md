@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.2.1"></a>
+## [0.2.1](https://github.com/chenquincy/app-info-parser/compare/v0.2.0...v0.2.1) (2019-03-23)
+
+
+### Bug Fixes
+
+* parse error while package's icon filename is unicode encode. ([4e64f76](https://github.com/chenquincy/app-info-parser/commit/4e64f76)), closes [#10](https://github.com/chenquincy/app-info-parser/issues/10)
+
+
+
+<a name="0.2.0"></a>
+# 0.2.0 (2019-02-22)
+
+
+
 <a name="0.2.0"></a>
 # 0.2.0 (2019-02-22)
 
