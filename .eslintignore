@@ -3,3 +3,4 @@ dist/
 build/
 src/
 lib/resource-finder.js
+*.html

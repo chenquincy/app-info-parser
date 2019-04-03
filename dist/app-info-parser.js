@@ -1953,7 +1953,6 @@ var Zip = function () {
       });
       return new Promise(function (resolve, reject) {
         _this.unzip.getBuffer(regexs, { type: type }, function (err, buffers) {
-          console.log('err ----> ', buffers);
           err ? reject(err) : resolve(buffers);
         });
       });
