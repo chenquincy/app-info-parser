@@ -11,7 +11,7 @@
     p { padding: 0; margin: 0; }
     .container { width: 450px; margin: 20px auto; }
     .title { border-left: 4px solid #78C3F3; padding-left: 12px; font-size: 16px; margin: 0 0 20px 0; }
-    .card { padding: 20px; margin-bottom: 10px; background: #fff; border-radius: 4px; font-size: 12px; transition: all .3s; border: 1px solid #d9d9d9; border-color: #e9e9e9; }
+    .card { padding: 20px; margin-bottom: 20px; background: #fff; border-radius: 4px; font-size: 12px; transition: all .3s; border: 1px solid #d9d9d9; border-color: #e9e9e9; }
     .card:hover { box-shadow: 0 1px 6px hsla(0,0%,39%,.2); border-color: #eee; }
     .file { position: relative; border: 1px solid #99D3F5; border-radius: 2px; width: 85px; height: 30px; line-height: 30px; text-align: center; color: #1E88C7; }
     .file:hover { background: #AADFFD; border-color: #78C3F3; color: #004974; text-decoration: none; }
@@ -39,7 +39,7 @@
       parser.parse().then(result => {
         const div = document.createElement('div')
         div.innerHTML = `
-          <div style="padding: 20px; margin-bottom: 20px; background: #fff; border-radius: 4px; font-size: 16px; color: #717171; border: 1px solid #d9d9d9; border-color: #e9e9e9;">
+          <div style="padding: 20px; margin-bottom: 10px; background: #fff; border-radius: 4px; font-size: 16px; color: #717171; border: 1px solid #d9d9d9; border-color: #e9e9e9;">
             <p style="padding: 10px 0; display: flex; overflow: hidden;">
               <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">文件名称: </span>
               <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ files[0].name }</span>
@@ -60,7 +60,7 @@
         `
         document.getElementById('result-list').appendChild(div)
       }).catch(err => {
-        console.log('err ', err)
+        window.alert('解析出错：' + err)
       })
     }
   </script>

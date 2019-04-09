@@ -109,10 +109,10 @@ var AppInfoParser = function () {
     _classCallCheck(this, AppInfoParser);
 
     if (!file) {
-      throw new Error('Param miss: file.');
+      throw new Error('Param miss: file(file path in Node, File or Blob in browser).');
     }
     var splits = (file.name || file).split('.');
-    var fileType = splits[splits.length - 1];
+    var fileType = splits[splits.length - 1].toLowerCase();
     if (!supportFileTypes.includes(fileType)) {
       throw new Error('Unsupport file type, only support .ipa or .apk file.');
     }
