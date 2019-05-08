@@ -12,8 +12,7 @@
   "keywords": [
     "ipa",
     "apk",
-    "Info.plist",
-    "AndroidManifest.xml",
+    "parser",
     "browser",
     "node"
   ],
