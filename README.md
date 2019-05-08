@@ -1,6 +1,6 @@
 ## app-info-parser
 
-[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing `.ipa` or `.apk` files. It will parse the installation package information from `AndroidManifest.xml` or `Info.plist`.
+[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing `.ipa` or `.apk` files. It will return the infomation with json from `AndroidManifest.xml` or `Info.plist`.
 
 ![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
 
@@ -43,7 +43,7 @@ parser.parse().then(result => {
 })
 ```
 
-### Basic usage
+### Basic Use
 
 ``` html
 <input type="file" name="file" id="file" onchange="fileSelect()">

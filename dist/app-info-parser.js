@@ -1745,6 +1745,7 @@ var ManifestParser = function () {
       app.receivers = [];
       app.providers = [];
       app.usesLibraries = [];
+      app.metaData = [];
 
       element.childNodes.forEach(function (element) {
         switch (element.nodeName) {
@@ -1809,6 +1810,9 @@ var ManifestParser = function () {
             }
           case 'uses-library':
             app.usesLibraries.push(_this2.collapseAttributes(element));
+            break;
+          case 'meta-data':
+            app.metaData.push(_this2.collapseAttributes(element));
             break;
         }
       });
