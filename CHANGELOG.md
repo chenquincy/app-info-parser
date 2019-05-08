@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.4](https://github.com/chenquincy/app-info-parser/compare/v0.2.3...v0.2.4) (2019-05-08)
+
+
+### Bug Fixes
+
+* support parse meta-data node of <application> ([1b53f8c](https://github.com/chenquincy/app-info-parser/commit/1b53f8c))
+
+
+
 ## [0.2.3](https://github.com/chenquincy/app-info-parser/compare/v0.2.2...v0.2.3) (2019-04-09)
 
 ### Bug Fixes

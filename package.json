@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
@@ -12,8 +12,7 @@
   "keywords": [
     "ipa",
     "apk",
-    "Info.plist",
-    "AndroidManifest.xml",
+    "parser",
     "browser",
     "node"
   ],
