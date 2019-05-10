@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.5-beta](https://github.com/chenquincy/app-info-parser/compare/v0.2.4...v0.2.5-beta) (2019-05-10)
+
+
+### Bug Fixes
+
+* **browser:** unzip error can't be catched. ([f05cc2b](https://github.com/chenquincy/app-info-parser/commit/f05cc2b))
+
+
+
 ## [0.2.4](https://github.com/chenquincy/app-info-parser/compare/v0.2.3...v0.2.4) (2019-05-08)
 
 

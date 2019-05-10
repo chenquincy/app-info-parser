@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "0.2.4",
+  "version": "0.2.5-beta",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
@@ -19,10 +19,10 @@
   "author": "Quincy Chen <mail@chenquincy.cn>",
   "license": "MIT",
   "dependencies": {
+    "@tencent/isomorphic-unzip": "https://github.com/chenquincy/isomorphic-unzip",
     "bplist-parser": "^0.1.0",
     "bytebuffer": "^5.0.1",
     "cgbi-to-png": "^1.0.7",
-    "isomorphic-unzip": "^1.1.1",
     "plist": "^3.0.1"
   },
   "devDependencies": {
