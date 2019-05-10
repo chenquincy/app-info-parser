@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "0.2.4",
+  "version": "0.2.5-beta",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
