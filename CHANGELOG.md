@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.5](https://github.com/chenquincy/app-info-parser/compare/v0.2.5-beta...v0.2.5) (2019-05-10)
+
+
+### Bug Fixes
+
+* webpack uglifyjs not support es7 ([0a6c247](https://github.com/chenquincy/app-info-parser/commit/0a6c247)), closes [#15](https://github.com/chenquincy/app-info-parser/issues/15)
+
+
+
 ## [0.2.5-beta](https://github.com/chenquincy/app-info-parser/compare/v0.2.4...v0.2.5-beta) (2019-05-10)
 
 
