@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.6](https://personal.github.com/chenquincy/app-info-parser/compare/v0.2.5...v0.2.6) (2019-05-15)
+
+
+### Bug Fixes
+
+* add babel-plugin-transform-runtime ([7325a77](https://personal.github.com/chenquincy/app-info-parser/commit/7325a77))
+* add null icon judgement ([c38fda9](https://personal.github.com/chenquincy/app-info-parser/commit/c38fda9))
+* change unzip version ([81360ef](https://personal.github.com/chenquincy/app-info-parser/commit/81360ef))
+* set offset of resource.arsc ([7894a50](https://personal.github.com/chenquincy/app-info-parser/commit/7894a50))
+
+
+
 ## [0.2.5](https://github.com/chenquincy/app-info-parser/compare/v0.2.5-beta...v0.2.5) (2019-05-10)
 
 
