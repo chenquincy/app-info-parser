@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
@@ -19,16 +19,17 @@
   "author": "Quincy Chen <mail@chenquincy.cn>",
   "license": "MIT",
   "dependencies": {
-    "@tencent/isomorphic-unzip": "https://github.com/chenquincy/isomorphic-unzip",
     "bplist-parser": "^0.1.0",
     "bytebuffer": "^5.0.1",
     "cgbi-to-png": "^1.0.7",
+    "isomorphic-unzip": "^1.1.5",
     "plist": "^3.0.1"
   },
   "devDependencies": {
     "babel-cli": "^6.26.0",
     "babel-core": "^6.26.3",
     "babel-loader": "^7.1.5",
+    "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-es2015": "^6.24.1",
     "babel-preset-stage-2": "^6.24.1",
     "babelify": "^7.3.0",
