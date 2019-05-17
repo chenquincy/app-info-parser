@@ -35,7 +35,7 @@ var Zip = _dereq_('./zip');
 
 var _require = _dereq_('./utils'),
     mapInfoResource = _require.mapInfoResource,
-    findApkInfoIcon = _require.findApkInfoIcon,
+    findApkIconPath = _require.findApkIconPath,
     getBase64FromBuffer = _require.getBase64FromBuffer;
 
 var ManifestName = /^androidmanifest\.xml$/;
@@ -64,7 +64,7 @@ var ApkParser = function (_Zip) {
     key: 'parse',
     value: function () {
       var _ref = (0, _asyncToGenerator3.default)( /*#__PURE__*/_regenerator2.default.mark(function _callee() {
-        var buffers, apkInfo, resourceMap, iconBuffer;
+        var buffers, apkInfo, resourceMap, iconPath, iconBuffer;
         return _regenerator2.default.wrap(function _callee$(_context) {
           while (1) {
             switch (_context.prev = _context.next) {
@@ -88,32 +88,58 @@ var ApkParser = function (_Zip) {
                 apkInfo = this._parseManifest(buffers[ManifestName]);
                 // 解析 resourcemap
 
-                resourceMap = this._parseresourceMap(buffers[ResourceName]);
+                resourceMap = void 0;
+
+                if (buffers[ResourceName]) {
+                  _context.next = 12;
+                  break;
+                }
+
+                resourceMap = {};
+                _context.next = 23;
+                break;
+
+              case 12:
+                // 解析 resourcemap
+                resourceMap = this._parseResourceMap(buffers[ResourceName]);
                 // 结合resourcemap再次解析apkInfo
-
                 apkInfo = mapInfoResource(apkInfo, resourceMap);
-                // 获取icon base64值
-                _context.next = 11;
-                return this.getEntry(findApkInfoIcon(apkInfo));
 
-              case 11:
+                // 获取icon base64值
+                iconPath = findApkIconPath(apkInfo);
+
+                if (!iconPath) {
+                  _context.next = 22;
+                  break;
+                }
+
+                _context.next = 18;
+                return this.getEntry(iconPath);
+
+              case 18:
                 iconBuffer = _context.sent;
 
                 apkInfo.icon = getBase64FromBuffer(iconBuffer);
+                _context.next = 23;
+                break;
 
+              case 22:
+                apkInfo.icon = null;
+
+              case 23:
                 return _context.abrupt('return', apkInfo);
 
-              case 16:
-                _context.prev = 16;
+              case 26:
+                _context.prev = 26;
                 _context.t0 = _context['catch'](0);
                 throw _context.t0;
 
-              case 19:
+              case 29:
               case 'end':
                 return _context.stop();
             }
           }
-        }, _callee, this, [[0, 16]]);
+        }, _callee, this, [[0, 26]]);
       }));
 
       function parse() {
@@ -135,8 +161,8 @@ var ApkParser = function (_Zip) {
       }
     }
   }, {
-    key: '_parseresourceMap',
-    value: function _parseresourceMap(buffer) {
+    key: '_parseResourceMap',
+    value: function _parseResourceMap(buffer) {
       try {
         return new ResourceFinder().processResourceTable(buffer);
       } catch (e) {
@@ -244,7 +270,7 @@ var parseBplist = _dereq_('bplist-parser').parseBuffer;
 var cgbiToPng = _dereq_('cgbi-to-png');
 
 var _require = _dereq_('./utils'),
-    findIpaInfoIcon = _require.findIpaInfoIcon,
+    findIpaIconPath = _require.findIpaIconPath,
     getBase64FromBuffer = _require.getBase64FromBuffer;
 
 var PlistName = new RegExp('payload/.+?.app/info.plist$', 'i');
@@ -299,7 +325,7 @@ var IpaParser = function (_Zip) {
                 plistInfo.mobileProvision = provisionInfo;
 
                 // 解析 ipa安装包图标
-                iconRegex = new RegExp(findIpaInfoIcon(plistInfo).toLowerCase());
+                iconRegex = new RegExp(findIpaIconPath(plistInfo).toLowerCase());
                 _context.next = 12;
                 return this.getEntry(iconRegex);
 
@@ -307,7 +333,7 @@ var IpaParser = function (_Zip) {
                 iconBuffer = _context.sent;
 
                 // ipa安装包的图标被特殊处理过，需要经过转换
-                plistInfo.icon = getBase64FromBuffer(cgbiToPng.revert(iconBuffer));
+                plistInfo.icon = iconBuffer ? getBase64FromBuffer(cgbiToPng.revert(iconBuffer)) : null;
 
                 return _context.abrupt('return', plistInfo);
 
@@ -891,10 +917,6 @@ module.exports = ResourceFinder;
 },{"bytebuffer":41}],5:[function(_dereq_,module,exports){
 'use strict';
 
-var _typeof2 = _dereq_('babel-runtime/helpers/typeof');
-
-var _typeof3 = _interopRequireDefault(_typeof2);
-
 var _keys = _dereq_('babel-runtime/core-js/object/keys');
 
 var _keys2 = _interopRequireDefault(_keys);
@@ -975,59 +997,52 @@ function mapInfoResource(apkInfo, resourceMap) {
  * 查找 apk 文件解析信息中的 icon 文件位置
  * @param info // apk文件解析出来的信息
  */
-function findApkInfoIcon(info) {
-  if (info.application.icon && info.application.icon.splice) {
-    var _ret = function () {
-      var rulesMap = {
-        mdpi: 48,
-        hdpi: 72,
-        xhdpi: 96,
-        xxdpi: 144,
-        xxxhdpi: 192
-      };
-      var resultMap = {};
-      var maxDpiIcon = { dpi: 120, icon: '' };
-
-      var _loop = function _loop(i) {
-        info.application.icon.some(function (icon) {
-          if (icon && icon.indexOf(i) !== -1) {
-            resultMap['application-icon-' + rulesMap[i]] = icon;
-            return true;
-          }
-        });
-
-        // 取出最大规格的icon
-        if (resultMap['application-icon-' + rulesMap[i]] && rulesMap[i] >= maxDpiIcon.dpi) {
-          maxDpiIcon.dpi = rulesMap[i];
-          maxDpiIcon.icon = resultMap['application-icon-' + rulesMap[i]];
-        }
-      };
-
-      for (var i in rulesMap) {
-        _loop(i);
-      }
-
-      if ((0, _keys2.default)(resultMap).length === 0 || !maxDpiIcon.icon) {
-        maxDpiIcon.dpi = 120;
-        maxDpiIcon.icon = info.application.icon[0] || '';
-        resultMap['applicataion-icon-120'] = maxDpiIcon.icon;
-      }
-      return {
-        v: maxDpiIcon.icon
-      };
-    }();
-
-    if ((typeof _ret === 'undefined' ? 'undefined' : (0, _typeof3.default)(_ret)) === "object") return _ret.v;
-  } else {
-    throw new Error('Unexpected icon type: ', info.application.icon);
+function findApkIconPath(info) {
+  if (!info.application.icon || !info.application.icon.splice) {
+    return '';
   }
+  var rulesMap = {
+    mdpi: 48,
+    hdpi: 72,
+    xhdpi: 96,
+    xxdpi: 144,
+    xxxhdpi: 192
+  };
+  var resultMap = {};
+  var maxDpiIcon = { dpi: 120, icon: '' };
+
+  var _loop = function _loop(i) {
+    info.application.icon.some(function (icon) {
+      if (icon && icon.indexOf(i) !== -1) {
+        resultMap['application-icon-' + rulesMap[i]] = icon;
+        return true;
+      }
+    });
+
+    // 取出最大规格的icon
+    if (resultMap['application-icon-' + rulesMap[i]] && rulesMap[i] >= maxDpiIcon.dpi) {
+      maxDpiIcon.dpi = rulesMap[i];
+      maxDpiIcon.icon = resultMap['application-icon-' + rulesMap[i]];
+    }
+  };
+
+  for (var i in rulesMap) {
+    _loop(i);
+  }
+
+  if ((0, _keys2.default)(resultMap).length === 0 || !maxDpiIcon.icon) {
+    maxDpiIcon.dpi = 120;
+    maxDpiIcon.icon = info.application.icon[0] || '';
+    resultMap['applicataion-icon-120'] = maxDpiIcon.icon;
+  }
+  return maxDpiIcon.icon;
 }
 
 /**
  * 查找 ipa 文件解析信息中的 icon 文件位置
  * @param info // ipa文件解析出来的信息
  */
-function findIpaInfoIcon(info) {
+function findIpaIconPath(info) {
   if (info.CFBundleIcons && info.CFBundleIcons.CFBundlePrimaryIcon && info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles && info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.length) {
     return info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles[info.CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconFiles.length - 1];
   } else if (info.CFBundleIconFiles && info.CFBundleIconFiles.length) {
@@ -1063,13 +1078,13 @@ module.exports = {
   isPrimitive: isPrimitive,
   isBrowser: isBrowser,
   mapInfoResource: mapInfoResource,
-  findApkInfoIcon: findApkInfoIcon,
-  findIpaInfoIcon: findIpaInfoIcon,
+  findApkIconPath: findApkIconPath,
+  findIpaIconPath: findIpaIconPath,
   getBase64FromBuffer: getBase64FromBuffer,
   decodeNullUnicode: decodeNullUnicode
 };
 
-},{"babel-runtime/core-js/object/keys":18,"babel-runtime/helpers/typeof":28}],6:[function(_dereq_,module,exports){
+},{"babel-runtime/core-js/object/keys":18}],6:[function(_dereq_,module,exports){
 'use strict';
 
 var _classCallCheck2 = _dereq_('babel-runtime/helpers/classCallCheck');
