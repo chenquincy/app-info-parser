@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.7](https://personal.github.com/chenquincy/app-info-parser/compare/v0.2.6...v0.2.7) (2019-05-17)
+
+
+### Bug Fixes
+
+* improve parse method ([2aa6366](https://personal.github.com/chenquincy/app-info-parser/commit/2aa6366))
+* some apk has no resources.asrc ([4650503](https://personal.github.com/chenquincy/app-info-parser/commit/4650503))
+* some apks has no application icon ([697733a](https://personal.github.com/chenquincy/app-info-parser/commit/697733a))
+
+
+
 ## [0.2.6](https://personal.github.com/chenquincy/app-info-parser/compare/v0.2.5...v0.2.6) (2019-05-15)
 
 
