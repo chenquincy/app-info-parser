@@ -5,9 +5,8 @@
   "main": "./src/index.js",
   "scripts": {
     "test": "node ./example/node.js",
-    "build": "rimraf src && babel lib -d src",
-    "build:browser": "rimraf dist/* && browserify lib/index.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
-    "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\""
+    "build": "webpack --config=build/npm.config.js",
+    "dist": "webpack --config=build/browser.config.js"
   },
   "keywords": [
     "ipa",
@@ -26,23 +25,16 @@
     "plist": "^3.0.1"
   },
   "devDependencies": {
-    "babel-cli": "^6.26.0",
-    "babel-core": "^6.26.3",
-    "babel-loader": "^7.1.5",
-    "babel-plugin-transform-runtime": "^6.23.0",
-    "babel-preset-es2015": "^6.24.1",
-    "babel-preset-stage-2": "^6.24.1",
-    "babelify": "^7.3.0",
-    "browserify": "^16.2.3",
-    "derequire": "^2.0.6",
+    "@babel/core": "^7.4.4",
+    "@babel/preset-env": "^7.4.4",
+    "babel-loader": "^8.0.6",
     "eslint": "^5.8.0",
     "eslint-config-standard": "^12.0.0",
     "eslint-plugin-import": "^2.14.0",
     "eslint-plugin-node": "^8.0.0",
     "eslint-plugin-promise": "^4.0.1",
     "eslint-plugin-standard": "^4.0.0",
-    "exorcist": "^1.0.1",
-    "rimraf": "^2.6.2",
-    "uglify-es": "^3.3.9"
+    "webpack": "^4.31.0",
+    "webpack-cli": "^3.3.2"
   }
 }
