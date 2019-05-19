@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.3.0"></a>
+# [0.3.0](https://github.com/chenquincy/app-info-parser/compare/v0.2.7...v0.3.0) (2019-05-19)
+
+
+### Features
+
+* use webpack to build ([a6c3d6d](https://github.com/chenquincy/app-info-parser/commit/a6c3d6d)), closes [#17](https://github.com/chenquincy/app-info-parser/issues/17)
+
+
+
+# Change Log
+
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
 ## [0.2.7](https://personal.github.com/chenquincy/app-info-parser/compare/v0.2.6...v0.2.7) (2019-05-17)
 
 
