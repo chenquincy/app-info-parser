@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.1](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.0...v0.3.1) (2019-05-20)
+
+
+### Bug Fixes
+
+* apk parse error ([a38ccb9](https://personal.github.com/chenquincy/app-info-parser/commit/a38ccb9))
+
+
+
 <a name="0.3.0"></a>
 # [0.3.0](https://github.com/chenquincy/app-info-parser/compare/v0.2.7...v0.3.0) (2019-05-19)
 
