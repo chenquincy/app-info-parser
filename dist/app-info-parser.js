@@ -686,7 +686,7 @@ ResourceFinder.prototype.processType = function (bb) {
   for (var refK in refKeys) {
     var values = this.responseMap["@" + Number(refKeys[refK]).toString(16).toUpperCase()];
 
-    if (values != null) {
+    if (values != null && Object.keys(values).length < 1000) {
       for (var value in values) {
         this.putIntoMap("@" + refK, value);
       }
@@ -811,14 +811,11 @@ ResourceFinder.prototype.processTypeSpec = function (bb) {
 };
 
 ResourceFinder.prototype.putIntoMap = function (resId, value) {
-  var valueList = this.responseMap[resId.toUpperCase()];
-
-  if (valueList == null) {
-    valueList = [];
+  if (this.responseMap[resId.toUpperCase()] == null) {
+    this.responseMap[resId.toUpperCase()] = [];
+  } else {
+    this.responseMap[resId.toUpperCase()].push(value);
   }
-
-  valueList.push(value);
-  this.responseMap[resId.toUpperCase()] = valueList;
 };
 
 module.exports = ResourceFinder;
@@ -948,7 +945,6 @@ function findApkIconPath(info) {
     resultMap['applicataion-icon-120'] = maxDpiIcon.icon;
   }
 
-  console.log(' ----> ', maxDpiIcon.icon);
   return maxDpiIcon.icon;
 }
 /**
