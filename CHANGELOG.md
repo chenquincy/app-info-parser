@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.2](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.1...v0.3.2) (2019-05-25)
+
+
+### Bug Fixes
+
+* out of memory while parsing some packages ([da2a90f](https://personal.github.com/chenquincy/app-info-parser/commit/da2a90f))
+
+
+
 ## [0.3.1](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.0...v0.3.1) (2019-05-20)
 
 
