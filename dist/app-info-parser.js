@@ -813,9 +813,9 @@ ResourceFinder.prototype.processTypeSpec = function (bb) {
 ResourceFinder.prototype.putIntoMap = function (resId, value) {
   if (this.responseMap[resId.toUpperCase()] == null) {
     this.responseMap[resId.toUpperCase()] = [];
-  } else {
-    this.responseMap[resId.toUpperCase()].push(value);
   }
+
+  this.responseMap[resId.toUpperCase()].push(value);
 };
 
 module.exports = ResourceFinder;
