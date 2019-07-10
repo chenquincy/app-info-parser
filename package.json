@@ -1,7 +1,7 @@
 {
   "name": "app-info-parser",
-  "version": "0.3.3",
-  "description": "Exact info from apk or ipa file.",
+  "version": "0.3.4",
+  "description": "Get info from apk, ipa, zip (contains app) file.",
   "main": "./src/index.js",
   "scripts": {
     "test": "node ./example/node.js",

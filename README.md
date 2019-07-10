@@ -1,6 +1,6 @@
 ## app-info-parser
 
-[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing `.ipa` or `.apk` files. It will return the infomation with json from `AndroidManifest.xml` or `Info.plist`.
+[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing  files as `.ipa`, `.apk` or `.zip` that contains `.app`. It will return the infomation with json from `AndroidManifest.xml` or `Info.plist`.
 
 ![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
 
@@ -34,7 +34,7 @@ yarn add app-info-parser
 
 ``` javascript
 const AppInfoParser = require('app-info-parser')
-const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa
+const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa or xxx.zip (contains .app file)
 parser.parse().then(result => {
   console.log('app info ----> ', result)
   console.log('icon base64 ----> ', result.icon)
