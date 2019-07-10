@@ -1,7 +1,7 @@
 {
   "name": "app-info-parser",
   "version": "0.3.3",
-  "description": "Exact info from apk or ipa file.",
+  "description": "Extract info from .apk or .ipa, compressed .app file.",
   "main": "./src/index.js",
   "scripts": {
     "test": "node ./example/node.js",
@@ -11,6 +11,7 @@
     "dist": "npm run build:browser && npm run minify"
   },
   "keywords": [
+    "app",
     "ipa",
     "apk",
     "parser",

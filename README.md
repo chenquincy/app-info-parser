@@ -34,7 +34,7 @@ yarn add app-info-parser
 
 ``` javascript
 const AppInfoParser = require('app-info-parser')
-const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa
+const parser = new AppInfoParser('../packages/test.apk') // or xxx.ipa or xxx.zip (compressed .app file)
 parser.parse().then(result => {
   console.log('app info ----> ', result)
   console.log('icon base64 ----> ', result.icon)
