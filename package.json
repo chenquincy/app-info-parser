@@ -1,6 +1,6 @@
 {
-  "name": "app-info-parser",
-  "version": "0.3.4",
+  "name": "dockyard-app-info-parser",
+  "version": "0.3.4.1",
   "description": "Get info from apk, ipa, zip (contains app) file.",
   "main": "./src/index.js",
   "scripts": {
@@ -10,6 +10,7 @@
     "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\"",
     "dist": "npm run build:browser && npm run minify"
   },
+  "homepage": "https://github.com/zcmgyu/app-info-parser",
   "keywords": [
     "ipa",
     "apk",

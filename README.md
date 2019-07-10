@@ -1,8 +1,8 @@
 ## app-info-parser
 
-[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing  files as `.ipa`, `.apk` or `.zip` that contains `.app`. It will return the infomation with json from `AndroidManifest.xml` or `Info.plist`.
+[dockyard-app-info-parser](https://github.com/zcmgyu/app-info-parser) is forked from [app-info-parser](https://github.com/chenquincy/app-info-parser). It's a parser for parsing files as `.ipa`, `.apk` or `.zip` (contains `.app`). It will return the information with json from `AndroidManifest.xml` or `Info.plist`.
 
-![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
+![](https://img.shields.io/npm/v/dockyard-app-info-parser.svg) ![](https://img.shields.io/npm/dt/dockyard-app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
 
 
 
@@ -21,12 +21,10 @@
 ## Installation
 
 ``` shell
-npm install app-info-parser
+npm install dockyard-app-info-parser
 # or yarn
-yarn add app-info-parser
+yarn add dockyard-app-info-parser
 ```
-
-
 
 ## Getting started
 
@@ -69,7 +67,7 @@ function fileSelect () {
 #### ApkParser
 
 ``` javascript
-const ApkParser = require('app-info-parser/src/apk')
+const ApkParser = require('dockyard-app-info-parser/src/apk')
 const parser = new ApkParser('../packages/test.apk')
 parser.parse().then(result => {
   console.log('app info ----> ', result)
@@ -82,7 +80,7 @@ parser.parse().then(result => {
 #### IpaParser
 
 ``` javascript
-const IpaParser = require('app-info-parser/src/ipa')
+const IpaParser = require('dockyard-app-info-parser/src/ipa')
 const parser = new IpaParser('../packages/test.ipa')
 parser.parse().then(result => {
   console.log('app info ----> ', result)
@@ -112,5 +110,5 @@ MIT
 
 ## Resources
 
-* [Changelog](https://github.com/chenquincy/app-info-parser/blob/master/CHANGELOG.md)
+* [Changelog](https://github.com/zcmgyu/app-info-parser/blob/master/CHANGELOG.md)
 
