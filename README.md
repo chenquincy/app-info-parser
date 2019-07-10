@@ -1,4 +1,4 @@
-## app-info-parser
+## dockyard-app-info-parser
 
 [dockyard-app-info-parser](https://github.com/zcmgyu/app-info-parser) is forked from [app-info-parser](https://github.com/chenquincy/app-info-parser). It's a parser for parsing files as `.ipa`, `.apk` or `.zip` (contains `.app`). It will return the information with json from `AndroidManifest.xml` or `Info.plist`.
 
