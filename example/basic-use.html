@@ -23,8 +23,8 @@
 <body>
   <div class="container">
     <div class="card">
-      <p class="title">操作区</p>
-      <div class="file">选择文件
+      <p class="title">Operation Panel</p>
+      <div class="file">Select File
         <input type="file" name="file" id="file-input" onchange="fileSelect()">
       </div>
     </div>
@@ -42,29 +42,29 @@
           div.innerHTML = `
             <div style="padding: 20px; margin-bottom: 10px; background: #fff; border-radius: 4px; font-size: 16px; color: #717171; border: 1px solid #d9d9d9; border-color: #e9e9e9;">
               <p style="padding: 10px 0; display: flex; overflow: hidden;">
-                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">文件名称: </span>
+                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">File Name: </span>
                 <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ files[0].name }</span>
               </p>
               <p style="padding: 10px 0; display: flex; overflow: hidden;">
-                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">安装包图标: </span>
+                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">App Icon: </span>
                 <img style="width: 80px; height: 80px;" src="${result.icon}" alt="">
               </p>
               <p style="padding: 10px 0; display: flex; overflow: hidden;">
-                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">安装包名: </span>
+                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">App Name: </span>
                 <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ result['package'] || result['CFBundleName'] }</span>
               </p>
               <p style="padding: 10px 0; display: flex; overflow: hidden;">
-                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">安装包版本: </span>
+                <span style="color: #000; text-align: right; width: 100px; font-weight: 600; padding-right: 20px;">App Version: </span>
                 <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ result['versionName'] || result['CFBundleShortVersionString'] }</span>
               </p>
             </div>
           `
             document.getElementById('result-list').appendChild(div)
-          }).catch(err => {
-            window.alert('解析出错：' + err)
+          }).catch(e => {
+            window.alert('Parse Error: ' + e)
           })
       } catch (e) {
-        window.alert('解析出错：' + e)
+        window.alert('Parse Error: ' + e)
       }
     }
   </script>
