@@ -38,6 +38,10 @@ var ApkParser =
 function (_Zip) {
   _inherits(ApkParser, _Zip);
 
+  /**
+   * parser for parsing .apk file
+   * @param {String | File | Blob} file // file's path in Node, instance of File or Blob in Browser
+   */
   function ApkParser(file) {
     var _this;
 
@@ -61,21 +65,19 @@ function (_Zip) {
         _this2.getEntries([ManifestName, ResourceName]).then(function (buffers) {
           if (!buffers[ManifestName]) {
             throw new Error('AndroidManifest.xml can\'t be found.');
-          } // 解析 manifest
+          }
 
-
-          var apkInfo = _this2._parseManifest(buffers[ManifestName]); // 解析 resourcemap
-
+          var apkInfo = _this2._parseManifest(buffers[ManifestName]);
 
           var resourceMap;
 
           if (!buffers[ResourceName]) {
             resolve(apkInfo);
           } else {
-            // 解析 resourcemap
-            resourceMap = _this2._parseResourceMap(buffers[ResourceName]); // 结合resourcemap再次解析apkInfo
+            // parse resourcemap
+            resourceMap = _this2._parseResourceMap(buffers[ResourceName]); // update apkInfo with resourcemap
 
-            apkInfo = mapInfoResource(apkInfo, resourceMap); // 获取icon base64值
+            apkInfo = mapInfoResource(apkInfo, resourceMap); // find icon path and parse icon
 
             var iconPath = findApkIconPath(apkInfo);
 
@@ -96,6 +98,11 @@ function (_Zip) {
         });
       });
     }
+    /**
+     * Parse manifest
+     * @param {Buffer} buffer // manifest file's buffer
+     */
+
   }, {
     key: "_parseManifest",
     value: function _parseManifest(buffer) {
@@ -108,6 +115,11 @@ function (_Zip) {
         throw new Error('Parse AndroidManifest.xml error: ', e);
       }
     }
+    /**
+     * Parse resourcemap
+     * @param {Buffer} buffer // resoucemap file's buffer
+     */
+
   }, {
     key: "_parseResourceMap",
     value: function _parseResourceMap(buffer) {
@@ -124,7 +136,461 @@ function (_Zip) {
 
 module.exports = ApkParser;
 
-},{"./resource-finder":4,"./utils":5,"./xml-parser/manifest":7,"./zip":8}],2:[function(_dereq_,module,exports){
+},{"./resource-finder":5,"./utils":6,"./xml-parser/manifest":8,"./zip":9}],2:[function(_dereq_,module,exports){
+(function (Buffer){
+"use strict";
+
+// adapted from http://code.google.com/p/plist/source/browse/trunk/src/com/dd/plist/BinaryPropertyListParser.java
+
+/* eslint-disable */
+var fs = _dereq_('fs');
+
+var bigInt = _dereq_("big-integer");
+
+var debug = false;
+exports.maxObjectSize = 100 * 1000 * 1000; // 100Meg
+
+exports.maxObjectCount = 32768; // EPOCH = new SimpleDateFormat("yyyy MM dd zzz").parse("2001 01 01 GMT").getTime();
+// ...but that's annoying in a static initializer because it can throw exceptions, ick.
+// So we just hardcode the correct value.
+
+var EPOCH = 978307200000; // UID object definition
+
+var UID = exports.UID = function (id) {
+  this.UID = id;
+};
+
+var parseFile = exports.parseFile = function (fileNameOrBuffer, callback) {
+  return new Promise(function (resolve, reject) {
+    function tryParseBuffer(buffer) {
+      var err = null;
+      var result;
+
+      try {
+        result = parseBuffer(buffer);
+        resolve(result);
+      } catch (ex) {
+        err = ex;
+        reject(err);
+      } finally {
+        if (callback) callback(err, result);
+      }
+    }
+
+    if (Buffer.isBuffer(fileNameOrBuffer)) {
+      return tryParseBuffer(fileNameOrBuffer);
+    }
+
+    fs.readFile(fileNameOrBuffer, function (err, data) {
+      if (err) {
+        reject(err);
+        return callback(err);
+      }
+
+      tryParseBuffer(data);
+    });
+  });
+};
+
+var parseBuffer = exports.parseBuffer = function (buffer) {
+  // check header
+  var header = buffer.slice(0, 'bplist'.length).toString('utf8');
+
+  if (header !== 'bplist') {
+    throw new Error("Invalid binary plist. Expected 'bplist' at offset 0.");
+  } // Handle trailer, last 32 bytes of the file
+
+
+  var trailer = buffer.slice(buffer.length - 32, buffer.length); // 6 null bytes (index 0 to 5)
+
+  var offsetSize = trailer.readUInt8(6);
+
+  if (debug) {
+    console.log("offsetSize: " + offsetSize);
+  }
+
+  var objectRefSize = trailer.readUInt8(7);
+
+  if (debug) {
+    console.log("objectRefSize: " + objectRefSize);
+  }
+
+  var numObjects = readUInt64BE(trailer, 8);
+
+  if (debug) {
+    console.log("numObjects: " + numObjects);
+  }
+
+  var topObject = readUInt64BE(trailer, 16);
+
+  if (debug) {
+    console.log("topObject: " + topObject);
+  }
+
+  var offsetTableOffset = readUInt64BE(trailer, 24);
+
+  if (debug) {
+    console.log("offsetTableOffset: " + offsetTableOffset);
+  }
+
+  if (numObjects > exports.maxObjectCount) {
+    throw new Error("maxObjectCount exceeded");
+  } // Handle offset table
+
+
+  var offsetTable = [];
+
+  for (var i = 0; i < numObjects; i++) {
+    var offsetBytes = buffer.slice(offsetTableOffset + i * offsetSize, offsetTableOffset + (i + 1) * offsetSize);
+    offsetTable[i] = readUInt(offsetBytes, 0);
+
+    if (debug) {
+      console.log("Offset for Object #" + i + " is " + offsetTable[i] + " [" + offsetTable[i].toString(16) + "]");
+    }
+  } // Parses an object inside the currently parsed binary property list.
+  // For the format specification check
+  // <a href="http://www.opensource.apple.com/source/CF/CF-635/CFBinaryPList.c">
+  // Apple's binary property list parser implementation</a>.
+
+
+  function parseObject(tableOffset) {
+    var offset = offsetTable[tableOffset];
+    var type = buffer[offset];
+    var objType = (type & 0xF0) >> 4; //First  4 bits
+
+    var objInfo = type & 0x0F; //Second 4 bits
+
+    switch (objType) {
+      case 0x0:
+        return parseSimple();
+
+      case 0x1:
+        return parseInteger();
+
+      case 0x8:
+        return parseUID();
+
+      case 0x2:
+        return parseReal();
+
+      case 0x3:
+        return parseDate();
+
+      case 0x4:
+        return parseData();
+
+      case 0x5:
+        // ASCII
+        return parsePlistString();
+
+      case 0x6:
+        // UTF-16
+        return parsePlistString(true);
+
+      case 0xA:
+        return parseArray();
+
+      case 0xD:
+        return parseDictionary();
+
+      default:
+        throw new Error("Unhandled type 0x" + objType.toString(16));
+    }
+
+    function parseSimple() {
+      //Simple
+      switch (objInfo) {
+        case 0x0:
+          // null
+          return null;
+
+        case 0x8:
+          // false
+          return false;
+
+        case 0x9:
+          // true
+          return true;
+
+        case 0xF:
+          // filler byte
+          return null;
+
+        default:
+          throw new Error("Unhandled simple type 0x" + objType.toString(16));
+      }
+    }
+
+    function bufferToHexString(buffer) {
+      var str = '';
+      var i;
+
+      for (i = 0; i < buffer.length; i++) {
+        if (buffer[i] != 0x00) {
+          break;
+        }
+      }
+
+      for (; i < buffer.length; i++) {
+        var part = '00' + buffer[i].toString(16);
+        str += part.substr(part.length - 2);
+      }
+
+      return str;
+    }
+
+    function parseInteger() {
+      var length = Math.pow(2, objInfo);
+
+      if (objInfo == 0x4) {
+        var data = buffer.slice(offset + 1, offset + 1 + length);
+        var str = bufferToHexString(data);
+        return bigInt(str, 16);
+      }
+
+      if (objInfo == 0x3) {
+        return buffer.readInt32BE(offset + 1);
+      }
+
+      if (length < exports.maxObjectSize) {
+        return readUInt(buffer.slice(offset + 1, offset + 1 + length));
+      }
+
+      throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
+    }
+
+    function parseUID() {
+      var length = objInfo + 1;
+
+      if (length < exports.maxObjectSize) {
+        return new UID(readUInt(buffer.slice(offset + 1, offset + 1 + length)));
+      }
+
+      throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
+    }
+
+    function parseReal() {
+      var length = Math.pow(2, objInfo);
+
+      if (length < exports.maxObjectSize) {
+        var realBuffer = buffer.slice(offset + 1, offset + 1 + length);
+
+        if (length === 4) {
+          return realBuffer.readFloatBE(0);
+        }
+
+        if (length === 8) {
+          return realBuffer.readDoubleBE(0);
+        }
+      } else {
+        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
+      }
+    }
+
+    function parseDate() {
+      if (objInfo != 0x3) {
+        console.error("Unknown date type :" + objInfo + ". Parsing anyway...");
+      }
+
+      var dateBuffer = buffer.slice(offset + 1, offset + 9);
+      return new Date(EPOCH + 1000 * dateBuffer.readDoubleBE(0));
+    }
+
+    function parseData() {
+      var dataoffset = 1;
+      var length = objInfo;
+
+      if (objInfo == 0xF) {
+        var int_type = buffer[offset + 1];
+        var intType = (int_type & 0xF0) / 0x10;
+
+        if (intType != 0x1) {
+          console.error("0x4: UNEXPECTED LENGTH-INT TYPE! " + intType);
+        }
+
+        var intInfo = int_type & 0x0F;
+        var intLength = Math.pow(2, intInfo);
+        dataoffset = 2 + intLength;
+
+        if (intLength < 3) {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        } else {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        }
+      }
+
+      if (length < exports.maxObjectSize) {
+        return buffer.slice(offset + dataoffset, offset + dataoffset + length);
+      }
+
+      throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
+    }
+
+    function parsePlistString(isUtf16) {
+      isUtf16 = isUtf16 || 0;
+      var enc = "utf8";
+      var length = objInfo;
+      var stroffset = 1;
+
+      if (objInfo == 0xF) {
+        var int_type = buffer[offset + 1];
+        var intType = (int_type & 0xF0) / 0x10;
+
+        if (intType != 0x1) {
+          console.err("UNEXPECTED LENGTH-INT TYPE! " + intType);
+        }
+
+        var intInfo = int_type & 0x0F;
+        var intLength = Math.pow(2, intInfo);
+        stroffset = 2 + intLength;
+
+        if (intLength < 3) {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        } else {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        }
+      } // length is String length -> to get byte length multiply by 2, as 1 character takes 2 bytes in UTF-16
+
+
+      length *= isUtf16 + 1;
+
+      if (length < exports.maxObjectSize) {
+        var plistString = Buffer.from(buffer.slice(offset + stroffset, offset + stroffset + length));
+
+        if (isUtf16) {
+          plistString = swapBytes(plistString);
+          enc = "ucs2";
+        }
+
+        return plistString.toString(enc);
+      }
+
+      throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
+    }
+
+    function parseArray() {
+      var length = objInfo;
+      var arrayoffset = 1;
+
+      if (objInfo == 0xF) {
+        var int_type = buffer[offset + 1];
+        var intType = (int_type & 0xF0) / 0x10;
+
+        if (intType != 0x1) {
+          console.error("0xa: UNEXPECTED LENGTH-INT TYPE! " + intType);
+        }
+
+        var intInfo = int_type & 0x0F;
+        var intLength = Math.pow(2, intInfo);
+        arrayoffset = 2 + intLength;
+
+        if (intLength < 3) {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        } else {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        }
+      }
+
+      if (length * objectRefSize > exports.maxObjectSize) {
+        throw new Error("To little heap space available!");
+      }
+
+      var array = [];
+
+      for (var _i = 0; _i < length; _i++) {
+        var objRef = readUInt(buffer.slice(offset + arrayoffset + _i * objectRefSize, offset + arrayoffset + (_i + 1) * objectRefSize));
+        array[_i] = parseObject(objRef);
+      }
+
+      return array;
+    }
+
+    function parseDictionary() {
+      var length = objInfo;
+      var dictoffset = 1;
+
+      if (objInfo == 0xF) {
+        var int_type = buffer[offset + 1];
+        var intType = (int_type & 0xF0) / 0x10;
+
+        if (intType != 0x1) {
+          console.error("0xD: UNEXPECTED LENGTH-INT TYPE! " + intType);
+        }
+
+        var intInfo = int_type & 0x0F;
+        var intLength = Math.pow(2, intInfo);
+        dictoffset = 2 + intLength;
+
+        if (intLength < 3) {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        } else {
+          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
+        }
+      }
+
+      if (length * 2 * objectRefSize > exports.maxObjectSize) {
+        throw new Error("To little heap space available!");
+      }
+
+      if (debug) {
+        console.log("Parsing dictionary #" + tableOffset);
+      }
+
+      var dict = {};
+
+      for (var _i2 = 0; _i2 < length; _i2++) {
+        var keyRef = readUInt(buffer.slice(offset + dictoffset + _i2 * objectRefSize, offset + dictoffset + (_i2 + 1) * objectRefSize));
+        var valRef = readUInt(buffer.slice(offset + dictoffset + length * objectRefSize + _i2 * objectRefSize, offset + dictoffset + length * objectRefSize + (_i2 + 1) * objectRefSize));
+        var key = parseObject(keyRef);
+        var val = parseObject(valRef);
+
+        if (debug) {
+          console.log("  DICT #" + tableOffset + ": Mapped " + key + " to " + val);
+        }
+
+        dict[key] = val;
+      }
+
+      return dict;
+    }
+  }
+
+  return [parseObject(topObject)];
+};
+
+function readUInt(buffer, start) {
+  start = start || 0;
+  var l = 0;
+
+  for (var i = start; i < buffer.length; i++) {
+    l <<= 8;
+    l |= buffer[i] & 0xFF;
+  }
+
+  return l;
+} // we're just going to toss the high order bits because javascript doesn't have 64-bit ints
+
+
+function readUInt64BE(buffer, start) {
+  var data = buffer.slice(start, start + 8);
+  return data.readUInt32BE(4, 8);
+}
+
+function swapBytes(buffer) {
+  var len = buffer.length;
+
+  for (var i = 0; i < len; i += 2) {
+    var a = buffer[i];
+    buffer[i] = buffer[i + 1];
+    buffer[i + 1] = a;
+  }
+
+  return buffer;
+}
+
+}).call(this,_dereq_("buffer").Buffer)
+
+},{"big-integer":15,"buffer":20,"fs":19}],3:[function(_dereq_,module,exports){
 "use strict";
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -143,21 +609,21 @@ var AppInfoParser =
 /*#__PURE__*/
 function () {
   /**
-   *
-   * @param {String | File | Blob} file // node：file path，browser: file or blob
+   * parser for parsing .ipa or .apk file
+   * @param {String | File | Blob} file // file's path in Node, instance of File or Blob in Browser
    */
   function AppInfoParser(file) {
     _classCallCheck(this, AppInfoParser);
 
     if (!file) {
-      throw new Error('Param miss: file(file path in Node, File or Blob in browser).');
+      throw new Error('Param miss: file(file\'s path in Node, instance of File or Blob in browser).');
     }
 
     var splits = (file.name || file).split('.');
     var fileType = splits[splits.length - 1].toLowerCase();
 
     if (!supportFileTypes.includes(fileType)) {
-      throw new Error('Unsupport file type, only support .ipa or .apk file.');
+      throw new Error('Unsupported file type, only support .ipa or .apk file.');
     }
 
     this.file = file;
@@ -185,7 +651,7 @@ function () {
 
 module.exports = AppInfoParser;
 
-},{"./apk":1,"./ipa":3}],3:[function(_dereq_,module,exports){
+},{"./apk":1,"./ipa":4}],4:[function(_dereq_,module,exports){
 "use strict";
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
@@ -210,7 +676,7 @@ var Zip = _dereq_('./zip');
 
 var parsePlist = _dereq_('plist').parse;
 
-var parseBplist = _dereq_('bplist-parser').parseBuffer;
+var parseBplist = _dereq_('./bplist-parser').parseBuffer;
 
 var cgbiToPng = _dereq_('cgbi-to-png');
 
@@ -226,6 +692,10 @@ var IpaParser =
 function (_Zip) {
   _inherits(IpaParser, _Zip);
 
+  /**
+   * parser for parsing .ipa file
+   * @param {String | File | Blob} file // file's path in Node, instance of File or Blob in Browser
+   */
   function IpaParser(file) {
     var _this;
 
@@ -249,20 +719,19 @@ function (_Zip) {
         _this2.getEntries([PlistName, ProvisionName]).then(function (buffers) {
           if (!buffers[PlistName]) {
             throw new Error('Info.plist can\'t be found.');
-          } // 解析 plist
+          }
 
-
-          var plistInfo = _this2._parsePlist(buffers[PlistName]); // 解析 mobileprovision
+          var plistInfo = _this2._parsePlist(buffers[PlistName]); // parse mobileprovision
 
 
           var provisionInfo = _this2._parseProvision(buffers[ProvisionName]);
 
-          plistInfo.mobileProvision = provisionInfo; // 解析 ipa安装包图标
+          plistInfo.mobileProvision = provisionInfo; // find icon path and parse icon
 
           var iconRegex = new RegExp(findIpaIconPath(plistInfo).toLowerCase());
 
           _this2.getEntry(iconRegex).then(function (iconBuffer) {
-            // ipa安装包的图标被特殊处理过，需要经过转换
+            // The ipa file's icon has been specially processed, should be converted
             plistInfo.icon = iconBuffer ? getBase64FromBuffer(cgbiToPng.revert(iconBuffer)) : null;
             resolve(plistInfo);
           })["catch"](function (e) {
@@ -274,8 +743,8 @@ function (_Zip) {
       });
     }
     /**
-     * 解析plist文件
-     * @param {Buffer} buffer // 要解析的plist文件buffer
+     * Parse plist
+     * @param {Buffer} buffer // plist file's buffer
      */
 
   }, {
@@ -295,8 +764,8 @@ function (_Zip) {
       return result;
     }
     /**
-     * 解析provision文件
-     * @param {Buffer} buffer // 要解析的plist文件buffer
+     * parse provision
+     * @param {Buffer} buffer // provision file's buffer
      */
 
   }, {
@@ -321,7 +790,7 @@ function (_Zip) {
 
 module.exports = IpaParser;
 
-},{"./utils":5,"./zip":8,"bplist-parser":15,"cgbi-to-png":23,"plist":74}],4:[function(_dereq_,module,exports){
+},{"./bplist-parser":2,"./utils":6,"./zip":9,"cgbi-to-png":23,"plist":74}],5:[function(_dereq_,module,exports){
 "use strict";
 
 /**
@@ -336,33 +805,7 @@ var RES_STRING_POOL_TYPE = 0x0001;
 var RES_TABLE_TYPE = 0x0002;
 var RES_TABLE_PACKAGE_TYPE = 0x0200;
 var RES_TABLE_TYPE_TYPE = 0x0201;
-var RES_TABLE_TYPE_SPEC_TYPE = 0x0202; // // Contains no data.
-// var TYPE_NULL = 0x00;
-// // The 'data' holds an attribute resource identifier.
-// var TYPE_ATTRIBUTE = 0x02;
-// // The 'data' holds a single-precision floating point number.
-// var TYPE_FLOAT = 0x04;
-// // The 'data' holds a complex number encoding a dimension value,
-// // such as "100in".
-// var TYPE_DIMENSION = 0x05;
-// // The 'data' holds a complex number encoding a fraction of a
-// // container.
-// var TYPE_FRACTION = 0x06;
-// // The 'data' is a raw integer value of the form n..n.
-// var TYPE_INT_DEC = 0x10;
-// // The 'data' is a raw integer value of the form 0xn..n.
-// var TYPE_INT_HEX = 0x11;
-// // The 'data' is either 0 or 1, for input "false" or "true" respectively.
-// var TYPE_INT_BOOLEAN = 0x12;
-// // The 'data' is a raw integer value of the form #aarrggbb.
-// var TYPE_INT_COLOR_ARGB8 = 0x1c;
-// // The 'data' is a raw integer value of the form #rrggbb.
-// var TYPE_INT_COLOR_RGB8 = 0x1d;
-// // The 'data' is a raw integer value of the form #argb.
-// var TYPE_INT_COLOR_ARGB4 = 0x1e;
-// // The 'data' is a raw integer value of the form #rgb.
-// var TYPE_INT_COLOR_RGB4 = 0x1f;
-// The 'data' holds a ResTable_ref, a reference to another resource
+var RES_TABLE_TYPE_SPEC_TYPE = 0x0202; // The 'data' holds a ResTable_ref, a reference to another resource
 // table entry.
 
 var TYPE_REFERENCE = 0x01; // The 'data' holds an index into the containing resource table's
@@ -382,7 +825,7 @@ function ResourceFinder() {
  * Same to C# BinaryReader.readBytes
  *
  * @param bb ByteBuffer
- * @param len 长度
+ * @param len length
  * @returns {Buffer}
  */
 
@@ -820,7 +1263,7 @@ ResourceFinder.prototype.putIntoMap = function (resId, value) {
 
 module.exports = ResourceFinder;
 
-},{"bytebuffer":22}],5:[function(_dereq_,module,exports){
+},{"bytebuffer":22}],6:[function(_dereq_,module,exports){
 "use strict";
 
 function objectType(o) {
@@ -843,8 +1286,8 @@ function isBrowser() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 /**
- * 根据resourceMap解析apkInfo中的文件位置
- * @param {Object} apkInfo // apk安装包解析出来的信息
+ * map file place with resourcemap
+ * @param {Object} apkInfo // json info parsed from .apk file
  * @param {Object} resourceMap // resourceMap
  */
 
@@ -898,8 +1341,8 @@ function mapInfoResource(apkInfo, resourceMap) {
   }
 }
 /**
- * 查找 apk 文件解析信息中的 icon 文件位置
- * @param info // apk文件解析出来的信息
+ * find .apk file's icon path from json info
+ * @param info // json info parsed from .apk file
  */
 
 
@@ -927,7 +1370,7 @@ function findApkIconPath(info) {
         resultMap['application-icon-' + rulesMap[i]] = icon;
         return true;
       }
-    }); // 取出最大规格的icon
+    }); // get the maximal size icon
 
     if (resultMap['application-icon-' + rulesMap[i]] && rulesMap[i] >= maxDpiIcon.dpi) {
       maxDpiIcon.dpi = rulesMap[i];
@@ -948,8 +1391,8 @@ function findApkIconPath(info) {
   return maxDpiIcon.icon;
 }
 /**
- * 查找 ipa 文件解析信息中的 icon 文件位置
- * @param info // ipa文件解析出来的信息
+ * find .ipa file's icon path from json info
+ * @param info // json info parsed from .ipa file
  */
 
 
@@ -963,7 +1406,7 @@ function findIpaIconPath(info) {
   }
 }
 /**
- * 将buffer转为base64编码
+ * tranform buffer to base64
  * @param {Buffer} buffer
  */
 
@@ -998,7 +1441,7 @@ module.exports = {
   decodeNullUnicode: decodeNullUnicode
 };
 
-},{}],6:[function(_dereq_,module,exports){
+},{}],7:[function(_dereq_,module,exports){
 "use strict";
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -1753,7 +2196,7 @@ function () {
 
 module.exports = BinaryXmlParser;
 
-},{}],7:[function(_dereq_,module,exports){
+},{}],8:[function(_dereq_,module,exports){
 "use strict";
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -2034,7 +2477,7 @@ function () {
 
 module.exports = ManifestParser;
 
-},{"./binary":6}],8:[function(_dereq_,module,exports){
+},{"./binary":7}],9:[function(_dereq_,module,exports){
 "use strict";
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -2072,9 +2515,9 @@ function () {
     this.unzip = new Unzip(this.file);
   }
   /**
-   * 获取安装包文件，返回类型：{ <filename>: <Buffer|Blob> }
-   * @param {Array} regexs // 匹配文件的正则表达式数组
-   * @param {String} type // 输出文件类型，默认buffer，type='blob'时返回blob
+   * get entries by regexs, the return format is: { <filename>: <Buffer|Blob> }
+   * @param {Array} regexs // regexs for matching files
+   * @param {String} type // return type, can be buffer or blob, default buffer
    */
 
 
@@ -2095,6 +2538,12 @@ function () {
         });
       });
     }
+    /**
+     * get entry by regex, return an instance of Buffer or Blob
+     * @param {Regex} regex // regex for matching file
+     * @param {String} type // return type, can be buffer or blob, default buffer
+     */
+
   }, {
     key: "getEntry",
     value: function getEntry(regex) {
@@ -2117,7 +2566,7 @@ function () {
 
 module.exports = Zip;
 
-},{"./utils":5,"isomorphic-unzip":59,"path":73}],9:[function(_dereq_,module,exports){
+},{"./utils":6,"isomorphic-unzip":59,"path":73}],10:[function(_dereq_,module,exports){
 (function (global){
 'use strict';
 
@@ -2628,7 +3077,7 @@ var objectKeys = Object.keys || function (obj) {
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"object-assign":61,"util/":12}],10:[function(_dereq_,module,exports){
+},{"object-assign":61,"util/":13}],11:[function(_dereq_,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -2653,14 +3102,14 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],11:[function(_dereq_,module,exports){
+},{}],12:[function(_dereq_,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],12:[function(_dereq_,module,exports){
+},{}],13:[function(_dereq_,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -3251,7 +3700,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"./support/isBuffer":11,"_process":78,"inherits":10}],13:[function(_dereq_,module,exports){
+},{"./support/isBuffer":12,"_process":78,"inherits":11}],14:[function(_dereq_,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -3404,7 +3853,7 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],14:[function(_dereq_,module,exports){
+},{}],15:[function(_dereq_,module,exports){
 var bigInt = (function (undefined) {
     "use strict";
 
@@ -4090,6 +4539,10 @@ var bigInt = (function (undefined) {
         if (mod.isZero()) throw new Error("Cannot take modPow with modulus 0");
         var r = Integer[1],
             base = this.mod(mod);
+        if (exp.isNegative()) {
+            exp = exp.multiply(Integer[-1]);
+            base = base.modInv(mod);
+        }
         while (exp.isPositive()) {
             if (base.isZero()) return Integer[0];
             if (exp.isOdd()) r = r.multiply(base).mod(mod);
@@ -4854,369 +5307,7 @@ if (typeof define === "function" && define.amd) {
     });
 }
 
-},{}],15:[function(_dereq_,module,exports){
-(function (Buffer){
-'use strict';
-
-// adapted from http://code.google.com/p/plist/source/browse/trunk/src/com/dd/plist/BinaryPropertyListParser.java
-
-var fs = _dereq_('fs');
-var bigInt = _dereq_("big-integer");
-var debug = false;
-
-exports.maxObjectSize = 100 * 1000 * 1000; // 100Meg
-exports.maxObjectCount = 32768;
-
-// EPOCH = new SimpleDateFormat("yyyy MM dd zzz").parse("2001 01 01 GMT").getTime();
-// ...but that's annoying in a static initializer because it can throw exceptions, ick.
-// So we just hardcode the correct value.
-var EPOCH = 978307200000;
-
-// UID object definition
-var UID = exports.UID = function(id) {
-  this.UID = id;
-}
-
-var parseFile = exports.parseFile = function (fileNameOrBuffer, callback) {
-  function tryParseBuffer(buffer) {
-    var err = null;
-    var result;
-    try {
-      result = parseBuffer(buffer);
-    } catch (ex) {
-      err = ex;
-    }
-    callback(err, result);
-  }
-
-  if (Buffer.isBuffer(fileNameOrBuffer)) {
-    return tryParseBuffer(fileNameOrBuffer);
-  } else {
-    fs.readFile(fileNameOrBuffer, function (err, data) {
-      if (err) { return callback(err); }
-      tryParseBuffer(data);
-    });
-  }
-};
-
-var parseBuffer = exports.parseBuffer = function (buffer) {
-  var result = {};
-
-  // check header
-  var header = buffer.slice(0, 'bplist'.length).toString('utf8');
-  if (header !== 'bplist') {
-    throw new Error("Invalid binary plist. Expected 'bplist' at offset 0.");
-  }
-
-  // Handle trailer, last 32 bytes of the file
-  var trailer = buffer.slice(buffer.length - 32, buffer.length);
-  // 6 null bytes (index 0 to 5)
-  var offsetSize = trailer.readUInt8(6);
-  if (debug) {
-    console.log("offsetSize: " + offsetSize);
-  }
-  var objectRefSize = trailer.readUInt8(7);
-  if (debug) {
-    console.log("objectRefSize: " + objectRefSize);
-  }
-  var numObjects = readUInt64BE(trailer, 8);
-  if (debug) {
-    console.log("numObjects: " + numObjects);
-  }
-  var topObject = readUInt64BE(trailer, 16);
-  if (debug) {
-    console.log("topObject: " + topObject);
-  }
-  var offsetTableOffset = readUInt64BE(trailer, 24);
-  if (debug) {
-    console.log("offsetTableOffset: " + offsetTableOffset);
-  }
-
-  if (numObjects > exports.maxObjectCount) {
-    throw new Error("maxObjectCount exceeded");
-  }
-
-  // Handle offset table
-  var offsetTable = [];
-
-  for (var i = 0; i < numObjects; i++) {
-    var offsetBytes = buffer.slice(offsetTableOffset + i * offsetSize, offsetTableOffset + (i + 1) * offsetSize);
-    offsetTable[i] = readUInt(offsetBytes, 0);
-    if (debug) {
-      console.log("Offset for Object #" + i + " is " + offsetTable[i] + " [" + offsetTable[i].toString(16) + "]");
-    }
-  }
-
-  // Parses an object inside the currently parsed binary property list.
-  // For the format specification check
-  // <a href="http://www.opensource.apple.com/source/CF/CF-635/CFBinaryPList.c">
-  // Apple's binary property list parser implementation</a>.
-  function parseObject(tableOffset) {
-    var offset = offsetTable[tableOffset];
-    var type = buffer[offset];
-    var objType = (type & 0xF0) >> 4; //First  4 bits
-    var objInfo = (type & 0x0F);      //Second 4 bits
-    switch (objType) {
-    case 0x0:
-      return parseSimple();
-    case 0x1:
-      return parseInteger();
-    case 0x8:
-      return parseUID();
-    case 0x2:
-      return parseReal();
-    case 0x3:
-      return parseDate();
-    case 0x4:
-      return parseData();
-    case 0x5: // ASCII
-      return parsePlistString();
-    case 0x6: // UTF-16
-      return parsePlistString(true);
-    case 0xA:
-      return parseArray();
-    case 0xD:
-      return parseDictionary();
-    default:
-      throw new Error("Unhandled type 0x" + objType.toString(16));
-    }
-
-    function parseSimple() {
-      //Simple
-      switch (objInfo) {
-      case 0x0: // null
-        return null;
-      case 0x8: // false
-        return false;
-      case 0x9: // true
-        return true;
-      case 0xF: // filler byte
-        return null;
-      default:
-        throw new Error("Unhandled simple type 0x" + objType.toString(16));
-      }
-    }
-
-    function bufferToHexString(buffer) {
-      var str = '';
-      var i;
-      for (i = 0; i < buffer.length; i++) {
-        if (buffer[i] != 0x00) {
-          break;
-        }
-      }
-      for (; i < buffer.length; i++) {
-        var part = '00' + buffer[i].toString(16);
-        str += part.substr(part.length - 2);
-      }
-      return str;
-    }
-
-    function parseInteger() {
-      var length = Math.pow(2, objInfo);
-      if (length > 4) {
-        var data = buffer.slice(offset + 1, offset + 1 + length);
-        var str = bufferToHexString(data);
-        return bigInt(str, 16);
-      } if (length < exports.maxObjectSize) {
-        return readUInt(buffer.slice(offset + 1, offset + 1 + length));
-      } else {
-        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
-      }
-    }
-
-    function parseUID() {
-      var length = objInfo + 1;
-      if (length < exports.maxObjectSize) {
-        return new UID(readUInt(buffer.slice(offset + 1, offset + 1 + length)));
-      } else {
-        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
-      }
-    }
-
-    function parseReal() {
-      var length = Math.pow(2, objInfo);
-      if (length < exports.maxObjectSize) {
-        var realBuffer = buffer.slice(offset + 1, offset + 1 + length);
-        if (length === 4) {
-          return realBuffer.readFloatBE(0);
-        }
-        else if (length === 8) {
-          return realBuffer.readDoubleBE(0);
-        }
-      } else {
-        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
-      }
-    }
-
-    function parseDate() {
-      if (objInfo != 0x3) {
-        console.error("Unknown date type :" + objInfo + ". Parsing anyway...");
-      }
-      var dateBuffer = buffer.slice(offset + 1, offset + 9);
-      return new Date(EPOCH + (1000 * dateBuffer.readDoubleBE(0)));
-    }
-
-    function parseData() {
-      var dataoffset = 1;
-      var length = objInfo;
-      if (objInfo == 0xF) {
-        var int_type = buffer[offset + 1];
-        var intType = (int_type & 0xF0) / 0x10;
-        if (intType != 0x1) {
-          console.error("0x4: UNEXPECTED LENGTH-INT TYPE! " + intType);
-        }
-        var intInfo = int_type & 0x0F;
-        var intLength = Math.pow(2, intInfo);
-        dataoffset = 2 + intLength;
-        if (intLength < 3) {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        } else {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        }
-      }
-      if (length < exports.maxObjectSize) {
-        return buffer.slice(offset + dataoffset, offset + dataoffset + length);
-      } else {
-        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
-      }
-    }
-
-    function parsePlistString (isUtf16) {
-      isUtf16 = isUtf16 || 0;
-      var enc = "utf8";
-      var length = objInfo;
-      var stroffset = 1;
-      if (objInfo == 0xF) {
-        var int_type = buffer[offset + 1];
-        var intType = (int_type & 0xF0) / 0x10;
-        if (intType != 0x1) {
-          console.err("UNEXPECTED LENGTH-INT TYPE! " + intType);
-        }
-        var intInfo = int_type & 0x0F;
-        var intLength = Math.pow(2, intInfo);
-        var stroffset = 2 + intLength;
-        if (intLength < 3) {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        } else {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        }
-      }
-      // length is String length -> to get byte length multiply by 2, as 1 character takes 2 bytes in UTF-16
-      length *= (isUtf16 + 1);
-      if (length < exports.maxObjectSize) {
-        var plistString = new Buffer(buffer.slice(offset + stroffset, offset + stroffset + length));
-        if (isUtf16) {
-          plistString = swapBytes(plistString);
-          enc = "ucs2";
-        }
-        return plistString.toString(enc);
-      } else {
-        throw new Error("To little heap space available! Wanted to read " + length + " bytes, but only " + exports.maxObjectSize + " are available.");
-      }
-    }
-
-    function parseArray() {
-      var length = objInfo;
-      var arrayoffset = 1;
-      if (objInfo == 0xF) {
-        var int_type = buffer[offset + 1];
-        var intType = (int_type & 0xF0) / 0x10;
-        if (intType != 0x1) {
-          console.error("0xa: UNEXPECTED LENGTH-INT TYPE! " + intType);
-        }
-        var intInfo = int_type & 0x0F;
-        var intLength = Math.pow(2, intInfo);
-        arrayoffset = 2 + intLength;
-        if (intLength < 3) {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        } else {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        }
-      }
-      if (length * objectRefSize > exports.maxObjectSize) {
-        throw new Error("To little heap space available!");
-      }
-      var array = [];
-      for (var i = 0; i < length; i++) {
-        var objRef = readUInt(buffer.slice(offset + arrayoffset + i * objectRefSize, offset + arrayoffset + (i + 1) * objectRefSize));
-        array[i] = parseObject(objRef);
-      }
-      return array;
-    }
-
-    function parseDictionary() {
-      var length = objInfo;
-      var dictoffset = 1;
-      if (objInfo == 0xF) {
-        var int_type = buffer[offset + 1];
-        var intType = (int_type & 0xF0) / 0x10;
-        if (intType != 0x1) {
-          console.error("0xD: UNEXPECTED LENGTH-INT TYPE! " + intType);
-        }
-        var intInfo = int_type & 0x0F;
-        var intLength = Math.pow(2, intInfo);
-        dictoffset = 2 + intLength;
-        if (intLength < 3) {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        } else {
-          length = readUInt(buffer.slice(offset + 2, offset + 2 + intLength));
-        }
-      }
-      if (length * 2 * objectRefSize > exports.maxObjectSize) {
-        throw new Error("To little heap space available!");
-      }
-      if (debug) {
-        console.log("Parsing dictionary #" + tableOffset);
-      }
-      var dict = {};
-      for (var i = 0; i < length; i++) {
-        var keyRef = readUInt(buffer.slice(offset + dictoffset + i * objectRefSize, offset + dictoffset + (i + 1) * objectRefSize));
-        var valRef = readUInt(buffer.slice(offset + dictoffset + (length * objectRefSize) + i * objectRefSize, offset + dictoffset + (length * objectRefSize) + (i + 1) * objectRefSize));
-        var key = parseObject(keyRef);
-        var val = parseObject(valRef);
-        if (debug) {
-          console.log("  DICT #" + tableOffset + ": Mapped " + key + " to " + val);
-        }
-        dict[key] = val;
-      }
-      return dict;
-    }
-  }
-
-  return [ parseObject(topObject) ];
-};
-
-function readUInt(buffer, start) {
-  start = start || 0;
-
-  var l = 0;
-  for (var i = start; i < buffer.length; i++) {
-    l <<= 8;
-    l |= buffer[i] & 0xFF;
-  }
-  return l;
-}
-
-// we're just going to toss the high order bits because javascript doesn't have 64-bit ints
-function readUInt64BE(buffer, start) {
-  var data = buffer.slice(start, start + 8);
-  return data.readUInt32BE(4, 8);
-}
-
-function swapBytes(buffer) {
-  var len = buffer.length;
-  for (var i = 0; i < len; i += 2) {
-    var a = buffer[i];
-    buffer[i] = buffer[i+1];
-    buffer[i+1] = a;
-  }
-  return buffer;
-}
-
-}).call(this,_dereq_("buffer").Buffer)
-
-},{"big-integer":14,"buffer":20,"fs":19}],16:[function(_dereq_,module,exports){
+},{}],16:[function(_dereq_,module,exports){
 
 },{}],17:[function(_dereq_,module,exports){
 (function (process,Buffer){
@@ -5631,7 +5722,7 @@ Zlib.prototype._reset = function () {
 exports.Zlib = Zlib;
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
 
-},{"_process":78,"assert":9,"buffer":20,"pako/lib/zlib/constants":64,"pako/lib/zlib/deflate.js":66,"pako/lib/zlib/inflate.js":68,"pako/lib/zlib/zstream":72}],18:[function(_dereq_,module,exports){
+},{"_process":78,"assert":10,"buffer":20,"pako/lib/zlib/constants":64,"pako/lib/zlib/deflate.js":66,"pako/lib/zlib/inflate.js":68,"pako/lib/zlib/zstream":72}],18:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
@@ -6244,7 +6335,7 @@ util.inherits(InflateRaw, Zlib);
 util.inherits(Unzip, Zlib);
 }).call(this,_dereq_('_process'))
 
-},{"./binding":17,"_process":78,"assert":9,"buffer":20,"stream":94,"util":101}],19:[function(_dereq_,module,exports){
+},{"./binding":17,"_process":78,"assert":10,"buffer":20,"stream":94,"util":101}],19:[function(_dereq_,module,exports){
 arguments[4][16][0].apply(exports,arguments)
 },{"dup":16}],20:[function(_dereq_,module,exports){
 (function (Buffer){
@@ -8028,7 +8119,7 @@ function numberIsNaN (obj) {
 
 }).call(this,_dereq_("buffer").Buffer)
 
-},{"base64-js":13,"buffer":20,"ieee754":51}],21:[function(_dereq_,module,exports){
+},{"base64-js":14,"buffer":20,"ieee754":51}],21:[function(_dereq_,module,exports){
 (function (Buffer){
 /*!
  *  Copyright 2008 Fair Oaks Labs, Inc.
@@ -13503,8 +13594,8 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }
 
 },{}],52:[function(_dereq_,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"dup":10}],53:[function(_dereq_,module,exports){
+arguments[4][11][0].apply(exports,arguments)
+},{"dup":11}],53:[function(_dereq_,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -22313,7 +22404,7 @@ function walk_obj(next, next_child) {
 
 }).call(this,{"isBuffer":_dereq_("../../is-buffer/index.js")})
 
-},{"../../is-buffer/index.js":53,"base64-js":13,"xmlbuilder":123}],76:[function(_dereq_,module,exports){
+},{"../../is-buffer/index.js":53,"base64-js":14,"xmlbuilder":123}],76:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * Module dependencies.
@@ -25780,8 +25871,8 @@ function config (name) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}],100:[function(_dereq_,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"dup":11}],101:[function(_dereq_,module,exports){
+arguments[4][12][0].apply(exports,arguments)
+},{"dup":12}],101:[function(_dereq_,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -31054,6 +31145,6 @@ function split(source,start){
 exports.XMLReader = XMLReader;
 
 
-},{}]},{},[2])(2)
+},{}]},{},[3])(3)
 });
 //# sourceMappingURL=app-info-parser.js.map

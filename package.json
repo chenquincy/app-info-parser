@@ -10,6 +10,9 @@
     "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\"",
     "dist": "npm run build:browser && npm run minify"
   },
+  "browser": {
+    "./src/bplist-parser/index.js": "./src/bplist-parser/browser.js"
+  },
   "keywords": [
     "ipa",
     "apk",
@@ -20,7 +23,7 @@
   "author": "Quincy Chen <mail@chenquincy.cn>",
   "license": "MIT",
   "dependencies": {
-    "bplist-parser": "^0.1.0",
+    "big-integer": "^1.6.45",
     "bytebuffer": "^5.0.1",
     "cgbi-to-png": "^1.0.7",
     "isomorphic-unzip": "^1.1.5",
