@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
@@ -23,7 +23,7 @@
   "author": "Quincy Chen <mail@chenquincy.cn>",
   "license": "MIT",
   "dependencies": {
-    "big-integer": "^1.6.45",
+    "bplist-parser": "^0.2.0",
     "bytebuffer": "^5.0.1",
     "cgbi-to-png": "^1.0.7",
     "isomorphic-unzip": "^1.1.5",

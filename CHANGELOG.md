@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.5](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.4...v0.3.5) (2019-09-27)
+
+
+### Bug Fixes
+
+* **ipa.js:** fix parseBplist is not a function ([e9e0fbe](https://personal.github.com/chenquincy/app-info-parser/commit/e9e0fbe)), closes [#25](https://personal.github.com/chenquincy/app-info-parser/issues/25)
+
+
+
 ## [0.3.4](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.3...v0.3.4) (2019-09-25)
 
 
