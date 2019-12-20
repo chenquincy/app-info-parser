@@ -320,11 +320,14 @@ function (_Zip) {
       var info = {};
 
       if (buffer) {
-        info = buffer.toString('utf-8');
-        var firstIndex = info.indexOf('<');
-        var endIndex = info.indexOf('</plist>');
-        info = info.slice(firstIndex, endIndex + 8);
-        info = parsePlist(info);
+        var content = buffer.toString('utf-8');
+        var firstIndex = content.indexOf('<');
+        var endIndex = content.indexOf('</plist>');
+        content = content.slice(firstIndex, endIndex + 8);
+
+        if (content) {
+          info = parsePlist(content);
+        }
       }
 
       return info;
