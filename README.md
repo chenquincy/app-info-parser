@@ -104,6 +104,35 @@ parser.parse().then(result => {
 
 
 
+## Buy Me A Coffee
+
+Open source is not easy, you can  buy me a coffee. *Note your name or github id so I can add you to the donation list.*
+
+<table style="margin-left: auto; margin-right: auto;">
+	<tr>
+		<td style="padding: 50px;text-align:center;">
+      <p style="font-size:25px;">Wechat Pay</p>
+			<img src="https://user-images.githubusercontent.com/10976378/61703600-7e66f900-ad74-11e9-9eab-9ec57d1cf7e0.png">
+		</td>
+		<td style="padding: 50px;text-align:center;">
+      <p style="font-size:25px;">Ali Pay</p>
+			<img src="https://user-images.githubusercontent.com/10976378/61703625-9179c900-ad74-11e9-936c-9cf5b7d59aa7.png">
+		</td>
+	</tr>
+</table>
+
+
+
+## Donation List
+
+❤️ Thanks these guys for donation. Contact me with <a href="mailto:mail@quincychen.cn" target="_blank" rel="noopener noreferrer nofollow" title="EMail">email</a>, if you donated but not on the list.
+
+* *。
+* zona.zhou
+* <a href="https://github.com/LoranWong" rel="noopener noreferrer nofollow">黄灰红</a>
+
+
+
 ##  License
 
 MIT
@@ -114,22 +143,4 @@ MIT
 
 * [Changelog](https://github.com/chenquincy/app-info-parser/blob/master/CHANGELOG.md)
 
-
-
-## Buy Me A Coffee
-
-You can sponsor me to buy a cup of coffee, if this project has helped you.
-
-<table style="margin-left: auto; margin-right: auto;">
-	<tr>
-		<td style="padding: 50px;text-align:center;">
-      <p style="font-size:25px;font-weight:500;">Wechat Pay</p>
-			<img src="https://user-images.githubusercontent.com/10976378/61703600-7e66f900-ad74-11e9-9eab-9ec57d1cf7e0.png">
-		</td>
-		<td style="padding: 50px;text-align:center;">
-      <p style="font-size:25px;font-weight:500;">Ali Pay</p>
-			<img src="https://user-images.githubusercontent.com/10976378/61703625-9179c900-ad74-11e9-936c-9cf5b7d59aa7.png">
-		</td>
-	</tr>
-</table>
 
