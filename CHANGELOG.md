@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.3.7](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.6...v0.3.7) (2020-01-06)
+
+
+### Bug Fixes
+
+* **ApkParser:** offset overflow while parsing some apk files ([8a65ccd](https://personal.github.com/chenquincy/app-info-parser/commit/8a65ccd)), closes [#34](https://personal.github.com/chenquincy/app-info-parser/issues/34)
+
+
+
 ## [0.3.6](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.5...v0.3.6) (2019-12-20)
 
 
