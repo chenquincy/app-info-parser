@@ -74,8 +74,8 @@ function (_Zip) {
           if (!buffers[ResourceName]) {
             resolve(apkInfo);
           } else {
-            // parse resourcemap
-            resourceMap = _this2._parseResourceMap(buffers[ResourceName]); // update apkInfo with resourcemap
+            // parse resourceMap
+            resourceMap = _this2._parseResourceMap(buffers[ResourceName]); // update apkInfo with resourceMap
 
             apkInfo = mapInfoResource(apkInfo, resourceMap); // find icon path and parse icon
 
@@ -116,8 +116,8 @@ function (_Zip) {
       }
     }
     /**
-     * Parse resourcemap
-     * @param {Buffer} buffer // resoucemap file's buffer
+     * Parse resourceMap
+     * @param {Buffer} buffer // resourceMap file's buffer
      */
 
   }, {
@@ -202,6 +202,14 @@ module.exports = AppInfoParser;
 
 function _typeof(obj) { if (typeof Symbol === "function" && typeof Symbol.iterator === "symbol") { _typeof = function _typeof(obj) { return typeof obj; }; } else { _typeof = function _typeof(obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; }; } return _typeof(obj); }
 
+function _toConsumableArray(arr) { return _arrayWithoutHoles(arr) || _iterableToArray(arr) || _nonIterableSpread(); }
+
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance"); }
+
+function _iterableToArray(iter) { if (Symbol.iterator in Object(iter) || Object.prototype.toString.call(iter) === "[object Arguments]") return Array.from(iter); }
+
+function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) { for (var i = 0, arr2 = new Array(arr.length); i < arr.length; i++) { arr2[i] = arr[i]; } return arr2; } }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 function _defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } }
@@ -218,17 +226,18 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 
 function _setPrototypeOf(o, p) { _setPrototypeOf = Object.setPrototypeOf || function _setPrototypeOf(o, p) { o.__proto__ = p; return o; }; return _setPrototypeOf(o, p); }
 
-var Zip = _dereq_('./zip');
-
 var parsePlist = _dereq_('plist').parse;
 
 var parseBplist = _dereq_('bplist-parser').parseBuffer;
 
 var cgbiToPng = _dereq_('cgbi-to-png');
 
+var Zip = _dereq_('./zip');
+
 var _require = _dereq_('./utils'),
     findIpaIconPath = _require.findIpaIconPath,
-    getBase64FromBuffer = _require.getBase64FromBuffer;
+    getBase64FromBuffer = _require.getBase64FromBuffer,
+    isBrowser = _require.isBrowser;
 
 var PlistName = new RegExp('payload/.+?.app/info.plist$', 'i');
 var ProvisionName = /payload\/.+?\.app\/embedded.mobileprovision/;
@@ -267,7 +276,7 @@ function (_Zip) {
             throw new Error('Info.plist can\'t be found.');
           }
 
-          var plistInfo = _this2._parsePlist(buffers[PlistName]); // parse mobileprovision
+          var plistInfo = _this2._parsePlist(buffers[PlistName]); // parse mobile provision
 
 
           var provisionInfo = _this2._parseProvision(buffers[ProvisionName]);
@@ -277,8 +286,18 @@ function (_Zip) {
           var iconRegex = new RegExp(findIpaIconPath(plistInfo).toLowerCase());
 
           _this2.getEntry(iconRegex).then(function (iconBuffer) {
-            // The ipa file's icon has been specially processed, should be converted
-            plistInfo.icon = iconBuffer ? getBase64FromBuffer(cgbiToPng.revert(iconBuffer)) : null;
+            try {
+              // In general, the ipa file's icon has been specially processed, should be converted
+              plistInfo.icon = iconBuffer ? getBase64FromBuffer(cgbiToPng.revert(iconBuffer)) : null;
+            } catch (err) {
+              if (isBrowser()) {
+                // Normal conversion in other cases
+                plistInfo.icon = iconBuffer ? getBase64FromBuffer(window.btoa(String.fromCharCode.apply(String, _toConsumableArray(iconBuffer)))) : null;
+              } else {
+                throw err;
+              }
+            }
+
             resolve(plistInfo);
           })["catch"](function (e) {
             reject(e);
@@ -304,7 +323,7 @@ function (_Zip) {
       } else if (bufferType === 98) {
         result = parseBplist(buffer)[0];
       } else {
-        throw new Error('Unknow plist buffer type.');
+        throw new Error('Unknown plist buffer type.');
       }
 
       return result;
@@ -844,7 +863,7 @@ function isBrowser() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 /**
- * map file place with resourcemap
+ * map file place with resourceMap
  * @param {Object} apkInfo // json info parsed from .apk file
  * @param {Object} resourceMap // resourceMap
  */
@@ -861,7 +880,7 @@ function mapInfoResource(apkInfo, resourceMap) {
       } else if (isObject(obj[i])) {
         iteratorObj(obj[i]);
       } else if (isPrimitive(obj[i])) {
-        if (isResouces(obj[i])) {
+        if (isResources(obj[i])) {
           obj[i] = resourceMap[transKeyToMatchResourceMap(obj[i])];
         }
       }
@@ -877,14 +896,14 @@ function mapInfoResource(apkInfo, resourceMap) {
       } else if (isObject(array[i])) {
         iteratorObj(array[i]);
       } else if (isPrimitive(array[i])) {
-        if (isResouces(array[i])) {
+        if (isResources(array[i])) {
           array[i] = resourceMap[transKeyToMatchResourceMap(array[i])];
         }
       }
     }
   }
 
-  function isResouces(attrValue) {
+  function isResources(attrValue) {
     if (!attrValue) return false;
 
     if (typeof attrValue !== 'string') {
@@ -964,7 +983,7 @@ function findIpaIconPath(info) {
   }
 }
 /**
- * tranform buffer to base64
+ * transform buffer to base64
  * @param {Buffer} buffer
  */
 
@@ -2073,23 +2092,23 @@ function () {
     this.unzip = new Unzip(this.file);
   }
   /**
-   * get entries by regexs, the return format is: { <filename>: <Buffer|Blob> }
-   * @param {Array} regexs // regexs for matching files
+   * get entries by regexps, the return format is: { <filename>: <Buffer|Blob> }
+   * @param {Array} regexps // regexps for matching files
    * @param {String} type // return type, can be buffer or blob, default buffer
    */
 
 
   _createClass(Zip, [{
     key: "getEntries",
-    value: function getEntries(regexs) {
+    value: function getEntries(regexps) {
       var _this = this;
 
       var type = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'buffer';
-      regexs = regexs.map(function (regex) {
+      regexps = regexps.map(function (regex) {
         return decodeNullUnicode(regex);
       });
       return new Promise(function (resolve, reject) {
-        _this.unzip.getBuffer(regexs, {
+        _this.unzip.getBuffer(regexps, {
           type: type
         }, function (err, buffers) {
           err ? reject(err) : resolve(buffers);
