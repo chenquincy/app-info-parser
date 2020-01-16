@@ -1,6 +1,13 @@
-# Change Log
+# Changelog
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [0.3.8](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.7...v0.3.8) (2020-01-16)
+
+
+### Bug Fixes
+
+* **$ipaParser:** not a png while parsing some ipa ([12bbab6](https://personal.github.com/chenquincy/app-info-parser/commit/12bbab6b6387f1d79bf9345f5639f960b897a20c)), closes [#36](https://personal.github.com/chenquincy/app-info-parser/issues/36)
 
 ## [0.3.7](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.6...v0.3.7) (2020-01-06)
 
