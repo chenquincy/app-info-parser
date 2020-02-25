@@ -1,6 +1,6 @@
 ## app-info-parser
 
-[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing `.ipa` or `.apk` files. It will return the infomation with json from `AndroidManifest.xml` or `Info.plist`.
+[app-info-parser](https://github.com/chenquincy/app-info-parser) is a parser for parsing `.ipa` or `.apk` files. It will return the information with json from `AndroidManifest.xml` or `Info.plist`.
 
 ![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
 
@@ -125,7 +125,7 @@ Open source is not easy, you can  buy me a coffee. *Note your name or github id 
 
 ## Donation List
 
-❤️ Thanks these guys for donation. Contact me with <a href="mailto:mail@quincychen.cn" target="_blank" rel="noopener noreferrer nofollow" title="EMail">email</a>, if you donated but not on the list.
+❤️ Thanks these guys for donations. Contact me with <a href="mailto:mail@quincychen.cn" target="_blank" rel="noopener noreferrer nofollow" title="EMail">email</a>, if you had donated but not on the list.
 
 | Donors                                 | Amount | Time             |
 | -------------------------------------- | ------ | ---------------- |
@@ -133,6 +133,7 @@ Open source is not easy, you can  buy me a coffee. *Note your name or github id 
 | zona.zhou                              | ￥1    | 2019-10-20 23:18 |
 | [黄灰红](https://github.com/LoranWong) | ￥1    | 2019-12-10 17:53 |
 | *风                                    | ￥1    | 2020-01-03 15:36 |
+| *大                                    | ￥6.66 | 2020-02-25 16:55 |
 
 
 
