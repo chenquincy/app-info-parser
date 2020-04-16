@@ -134,6 +134,7 @@ Open source is not easy, you can  buy me a coffee. *Note your name or github id 
 | [黄灰红](https://github.com/LoranWong) | ￥1    | 2019-12-10 17:53 |
 | *风                                    | ￥1    | 2020-01-03 15:36 |
 | *大                                    | ￥6.66 | 2020-02-25 16:55 |
+| **豪                                   | ￥6.66 | 2020-03-05 20:14 |
 
 
 
