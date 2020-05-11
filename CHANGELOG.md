@@ -2,8 +2,77 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-<a name="0.3.10"></a>
-## [0.3.10](https://github.com/chenquincy/app-info-parser/compare/v0.3.9...v0.3.10) (2020-05-11)
+### [0.3.10](https://github.com/chenquincy/app-info-parser/compare/v0.3.9...v0.3.10) (2020-05-11)
+
+### [0.3.9](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.8...v0.3.9) (2020-02-25)
+
+### [0.3.8](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.7...v0.3.8) (2020-01-16)
+
+
+### Bug Fixes
+
+* **$ipaParser:** not a png while parsing some ipa ([12bbab6](https://personal.github.com/chenquincy/app-info-parser/commit/12bbab6b6387f1d79bf9345f5639f960b897a20c)), closes [#36](https://personal.github.com/chenquincy/app-info-parser/issues/36)
+
+## [0.3.7](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.6...v0.3.7) (2020-01-06)
+
+
+### Bug Fixes
+
+* **ApkParser:** offset overflow while parsing some apk files ([8a65ccd](https://personal.github.com/chenquincy/app-info-parser/commit/8a65ccd)), closes [#34](https://personal.github.com/chenquincy/app-info-parser/issues/34)
+
+
+
+## [0.3.6](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.5...v0.3.6) (2019-12-20)
+
+
+### Bug Fixes
+
+* **IpaParser:** parse error when provision is empty ([d23fe8f](https://personal.github.com/chenquincy/app-info-parser/commit/d23fe8f)), closes [#30](https://personal.github.com/chenquincy/app-info-parser/issues/30)
+
+
+
+## [0.3.5](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.4...v0.3.5) (2019-09-27)
+
+
+### Bug Fixes
+
+* **ipa.js:** fix parseBplist is not a function ([e9e0fbe](https://personal.github.com/chenquincy/app-info-parser/commit/e9e0fbe)), closes [#25](https://personal.github.com/chenquincy/app-info-parser/issues/25)
+
+
+
+## [0.3.4](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.3...v0.3.4) (2019-09-25)
+
+
+### Bug Fixes
+
+* **ipa.js:** fix cannot resolve fs module while building in webpack ([fdcaeeb](https://personal.github.com/chenquincy/app-info-parser/commit/fdcaeeb)), closes [#23](https://personal.github.com/chenquincy/app-info-parser/issues/23)
+
+
+
+## [0.3.3](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.2...v0.3.3) (2019-06-03)
+
+
+### Bug Fixes
+
+* **ApkParser:** parse label error ([a419515](https://personal.github.com/chenquincy/app-info-parser/commit/a419515)), closes [#20](https://personal.github.com/chenquincy/app-info-parser/issues/20)
+
+
+
+## [0.3.2](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.1...v0.3.2) (2019-05-25)
+
+
+### Bug Fixes
+
+* out of memory while parsing some packages ([da2a90f](https://personal.github.com/chenquincy/app-info-parser/commit/da2a90f))
+
+
+
+## [0.3.1](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.0...v0.3.1) (2019-05-20)
+
+
+### Bug Fixes
+
+* apk parse error ([a38ccb9](https://personal.github.com/chenquincy/app-info-parser/commit/a38ccb9))
 
 
 
