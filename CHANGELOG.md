@@ -1,6 +1,8 @@
-# Changelog
+# Change Log
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [0.3.10](https://github.com/chenquincy/app-info-parser/compare/v0.3.9...v0.3.10) (2020-05-11)
 
 ### [0.3.9](https://personal.github.com/chenquincy/app-info-parser/compare/v0.3.8...v0.3.9) (2020-02-25)
 
