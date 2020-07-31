@@ -1052,9 +1052,9 @@ var ChunkType = {
 };
 var StringFlags = {
   SORTED: 1 << 0,
-  UTF8: 1 << 8
-}; // Taken from android.util.TypedValue
+  UTF8: 1 << 8 // Taken from android.util.TypedValue
 
+};
 var TypedValue = {
   COMPLEX_MANTISSA_MASK: 0x00ffffff,
   COMPLEX_MANTISSA_SHIFT: 0x00000008,
@@ -1560,9 +1560,9 @@ function () {
         nodeName: null,
         attributes: [],
         childNodes: []
-      };
-      /* const line = */
+        /* const line = */
 
+      };
       this.readU32();
       /* const commentRef = */
 
@@ -1672,9 +1672,9 @@ function () {
         nodeName: '#cdata',
         data: null,
         typedValue: null
-      };
-      /* const line = */
+        /* const line = */
 
+      };
       this.readU32();
       /* const commentRef = */
 
@@ -3345,8 +3345,7 @@ function toByteArray (b64) {
     ? validLen - 4
     : validLen
 
-  var i
-  for (i = 0; i < len; i += 4) {
+  for (var i = 0; i < len; i += 4) {
     tmp =
       (revLookup[b64.charCodeAt(i)] << 18) |
       (revLookup[b64.charCodeAt(i + 1)] << 12) |
@@ -6282,7 +6281,7 @@ util.inherits(InflateRaw, Zlib);
 util.inherits(Unzip, Zlib);
 }).call(this,_dereq_('_process'))
 
-},{"./binding":17,"_process":78,"assert":9,"buffer":20,"stream":94,"util":102}],19:[function(_dereq_,module,exports){
+},{"./binding":17,"_process":78,"assert":9,"buffer":20,"stream":94,"util":101}],19:[function(_dereq_,module,exports){
 arguments[4][16][0].apply(exports,arguments)
 },{"dup":16}],20:[function(_dereq_,module,exports){
 (function (Buffer){
@@ -13563,35 +13562,8 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }
 
 },{}],52:[function(_dereq_,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor
-      ctor.prototype = Object.create(superCtor.prototype, {
-        constructor: {
-          value: ctor,
-          enumerable: false,
-          writable: true,
-          configurable: true
-        }
-      })
-    }
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor
-      var TempCtor = function () {}
-      TempCtor.prototype = superCtor.prototype
-      ctor.prototype = new TempCtor()
-      ctor.prototype.constructor = ctor
-    }
-  }
-}
-
-},{}],53:[function(_dereq_,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"dup":10}],53:[function(_dereq_,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -22400,7 +22372,7 @@ function walk_obj(next, next_child) {
 
 }).call(this,{"isBuffer":_dereq_("../../is-buffer/index.js")})
 
-},{"../../is-buffer/index.js":53,"base64-js":13,"xmlbuilder":124}],76:[function(_dereq_,module,exports){
+},{"../../is-buffer/index.js":53,"base64-js":13,"xmlbuilder":123}],76:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * Module dependencies.
@@ -22620,12 +22592,11 @@ function parsePlistXML (node) {
 
 }).call(this,_dereq_("buffer").Buffer)
 
-},{"buffer":20,"xmldom":125}],77:[function(_dereq_,module,exports){
+},{"buffer":20,"xmldom":124}],77:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
-if (typeof process === 'undefined' ||
-    !process.version ||
+if (!process.version ||
     process.version.indexOf('v0.') === 0 ||
     process.version.indexOf('v1.') === 0 && process.version.indexOf('v1.8.') !== 0) {
   module.exports = { nextTick: nextTick };
@@ -22905,7 +22876,7 @@ var objectKeys = Object.keys || function (obj) {
 module.exports = Duplex;
 
 /*<replacement>*/
-var util = Object.create(_dereq_('core-util-is'));
+var util = _dereq_('core-util-is');
 util.inherits = _dereq_('inherits');
 /*</replacement>*/
 
@@ -23024,7 +22995,7 @@ module.exports = PassThrough;
 var Transform = _dereq_('./_stream_transform');
 
 /*<replacement>*/
-var util = Object.create(_dereq_('core-util-is'));
+var util = _dereq_('core-util-is');
 util.inherits = _dereq_('inherits');
 /*</replacement>*/
 
@@ -23107,7 +23078,7 @@ function _isUint8Array(obj) {
 /*</replacement>*/
 
 /*<replacement>*/
-var util = Object.create(_dereq_('core-util-is'));
+var util = _dereq_('core-util-is');
 util.inherits = _dereq_('inherits');
 /*</replacement>*/
 
@@ -24062,7 +24033,7 @@ function indexOf(xs, x) {
 }
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"./_stream_duplex":80,"./internal/streams/BufferList":85,"./internal/streams/destroy":86,"./internal/streams/stream":87,"_process":78,"core-util-is":24,"events":50,"inherits":52,"isarray":54,"process-nextick-args":77,"safe-buffer":88,"string_decoder/":89,"util":16}],83:[function(_dereq_,module,exports){
+},{"./_stream_duplex":80,"./internal/streams/BufferList":85,"./internal/streams/destroy":86,"./internal/streams/stream":87,"_process":78,"core-util-is":24,"events":50,"inherits":52,"isarray":54,"process-nextick-args":77,"safe-buffer":93,"string_decoder/":88,"util":16}],83:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24133,7 +24104,7 @@ module.exports = Transform;
 var Duplex = _dereq_('./_stream_duplex');
 
 /*<replacement>*/
-var util = Object.create(_dereq_('core-util-is'));
+var util = _dereq_('core-util-is');
 util.inherits = _dereq_('inherits');
 /*</replacement>*/
 
@@ -24345,7 +24316,7 @@ var Duplex;
 Writable.WritableState = WritableState;
 
 /*<replacement>*/
-var util = Object.create(_dereq_('core-util-is'));
+var util = _dereq_('core-util-is');
 util.inherits = _dereq_('inherits');
 /*</replacement>*/
 
@@ -24968,7 +24939,7 @@ Writable.prototype._destroy = function (err, cb) {
 };
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("timers").setImmediate)
 
-},{"./_stream_duplex":80,"./internal/streams/destroy":86,"./internal/streams/stream":87,"_process":78,"core-util-is":24,"inherits":52,"process-nextick-args":77,"safe-buffer":88,"timers":98,"util-deprecate":99}],85:[function(_dereq_,module,exports){
+},{"./_stream_duplex":80,"./internal/streams/destroy":86,"./internal/streams/stream":87,"_process":78,"core-util-is":24,"inherits":52,"process-nextick-args":77,"safe-buffer":93,"timers":98,"util-deprecate":99}],85:[function(_dereq_,module,exports){
 'use strict';
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -25048,7 +25019,7 @@ if (util && util.inspect && util.inspect.custom) {
     return this.constructor.name + ' ' + obj;
   };
 }
-},{"safe-buffer":88,"util":16}],86:[function(_dereq_,module,exports){
+},{"safe-buffer":93,"util":16}],86:[function(_dereq_,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -25127,70 +25098,6 @@ module.exports = {
 module.exports = _dereq_('events').EventEmitter;
 
 },{"events":50}],88:[function(_dereq_,module,exports){
-/* eslint-disable node/no-deprecated-api */
-var buffer = _dereq_('buffer')
-var Buffer = buffer.Buffer
-
-// alternative to using Object.keys for old browsers
-function copyProps (src, dst) {
-  for (var key in src) {
-    dst[key] = src[key]
-  }
-}
-if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
-  module.exports = buffer
-} else {
-  // Copy properties from require('buffer')
-  copyProps(buffer, exports)
-  exports.Buffer = SafeBuffer
-}
-
-function SafeBuffer (arg, encodingOrOffset, length) {
-  return Buffer(arg, encodingOrOffset, length)
-}
-
-// Copy static methods from Buffer
-copyProps(Buffer, SafeBuffer)
-
-SafeBuffer.from = function (arg, encodingOrOffset, length) {
-  if (typeof arg === 'number') {
-    throw new TypeError('Argument must not be a number')
-  }
-  return Buffer(arg, encodingOrOffset, length)
-}
-
-SafeBuffer.alloc = function (size, fill, encoding) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  var buf = Buffer(size)
-  if (fill !== undefined) {
-    if (typeof encoding === 'string') {
-      buf.fill(fill, encoding)
-    } else {
-      buf.fill(fill)
-    }
-  } else {
-    buf.fill(0)
-  }
-  return buf
-}
-
-SafeBuffer.allocUnsafe = function (size) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  return Buffer(size)
-}
-
-SafeBuffer.allocUnsafeSlow = function (size) {
-  if (typeof size !== 'number') {
-    throw new TypeError('Argument must be a number')
-  }
-  return buffer.SlowBuffer(size)
-}
-
-},{"buffer":20}],89:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25487,10 +25394,10 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":88}],90:[function(_dereq_,module,exports){
+},{"safe-buffer":93}],89:[function(_dereq_,module,exports){
 module.exports = _dereq_('./readable').PassThrough
 
-},{"./readable":91}],91:[function(_dereq_,module,exports){
+},{"./readable":90}],90:[function(_dereq_,module,exports){
 exports = module.exports = _dereq_('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -25499,13 +25406,77 @@ exports.Duplex = _dereq_('./lib/_stream_duplex.js');
 exports.Transform = _dereq_('./lib/_stream_transform.js');
 exports.PassThrough = _dereq_('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":80,"./lib/_stream_passthrough.js":81,"./lib/_stream_readable.js":82,"./lib/_stream_transform.js":83,"./lib/_stream_writable.js":84}],92:[function(_dereq_,module,exports){
+},{"./lib/_stream_duplex.js":80,"./lib/_stream_passthrough.js":81,"./lib/_stream_readable.js":82,"./lib/_stream_transform.js":83,"./lib/_stream_writable.js":84}],91:[function(_dereq_,module,exports){
 module.exports = _dereq_('./readable').Transform
 
-},{"./readable":91}],93:[function(_dereq_,module,exports){
+},{"./readable":90}],92:[function(_dereq_,module,exports){
 module.exports = _dereq_('./lib/_stream_writable.js');
 
-},{"./lib/_stream_writable.js":84}],94:[function(_dereq_,module,exports){
+},{"./lib/_stream_writable.js":84}],93:[function(_dereq_,module,exports){
+/* eslint-disable node/no-deprecated-api */
+var buffer = _dereq_('buffer')
+var Buffer = buffer.Buffer
+
+// alternative to using Object.keys for old browsers
+function copyProps (src, dst) {
+  for (var key in src) {
+    dst[key] = src[key]
+  }
+}
+if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
+  module.exports = buffer
+} else {
+  // Copy properties from require('buffer')
+  copyProps(buffer, exports)
+  exports.Buffer = SafeBuffer
+}
+
+function SafeBuffer (arg, encodingOrOffset, length) {
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+// Copy static methods from Buffer
+copyProps(Buffer, SafeBuffer)
+
+SafeBuffer.from = function (arg, encodingOrOffset, length) {
+  if (typeof arg === 'number') {
+    throw new TypeError('Argument must not be a number')
+  }
+  return Buffer(arg, encodingOrOffset, length)
+}
+
+SafeBuffer.alloc = function (size, fill, encoding) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  var buf = Buffer(size)
+  if (fill !== undefined) {
+    if (typeof encoding === 'string') {
+      buf.fill(fill, encoding)
+    } else {
+      buf.fill(fill)
+    }
+  } else {
+    buf.fill(0)
+  }
+  return buf
+}
+
+SafeBuffer.allocUnsafe = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return Buffer(size)
+}
+
+SafeBuffer.allocUnsafeSlow = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return buffer.SlowBuffer(size)
+}
+
+},{"buffer":20}],94:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25634,7 +25605,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":50,"inherits":52,"readable-stream/duplex.js":79,"readable-stream/passthrough.js":90,"readable-stream/readable.js":91,"readable-stream/transform.js":92,"readable-stream/writable.js":93}],95:[function(_dereq_,module,exports){
+},{"events":50,"inherits":52,"readable-stream/duplex.js":79,"readable-stream/passthrough.js":89,"readable-stream/readable.js":90,"readable-stream/transform.js":91,"readable-stream/writable.js":92}],95:[function(_dereq_,module,exports){
 module.exports = _dereq_('stream-to').buffer
 },{"stream-to":96}],96:[function(_dereq_,module,exports){
 (function (Buffer){
@@ -25715,7 +25686,7 @@ MultiStream.prototype._read = function () {
 };
 }).call(this,_dereq_("buffer").Buffer)
 
-},{"buffer":20,"stream":94,"util":102}],98:[function(_dereq_,module,exports){
+},{"buffer":20,"stream":94,"util":101}],98:[function(_dereq_,module,exports){
 (function (setImmediate,clearImmediate){
 var nextTick = _dereq_('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
@@ -25868,10 +25839,8 @@ function config (name) {
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
 },{}],100:[function(_dereq_,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"dup":10}],101:[function(_dereq_,module,exports){
 arguments[4][11][0].apply(exports,arguments)
-},{"dup":11}],102:[function(_dereq_,module,exports){
+},{"dup":11}],101:[function(_dereq_,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -26462,7 +26431,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"./support/isBuffer":101,"_process":78,"inherits":100}],103:[function(_dereq_,module,exports){
+},{"./support/isBuffer":100,"_process":78,"inherits":52}],102:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var assign, isArray, isEmpty, isFunction, isObject, isPlainObject,
@@ -26537,7 +26506,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{}],104:[function(_dereq_,module,exports){
+},{}],103:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute;
@@ -26570,7 +26539,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{}],105:[function(_dereq_,module,exports){
+},{}],104:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLNode,
@@ -26604,7 +26573,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],106:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],105:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLComment, XMLNode,
@@ -26638,7 +26607,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],107:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],106:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDAttList, XMLNode,
@@ -26690,7 +26659,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],108:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],107:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDElement, XMLNode,
@@ -26727,7 +26696,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],109:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],108:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDEntity, XMLNode, isObject,
@@ -26785,7 +26754,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLNode":116}],110:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLNode":115}],109:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDNotation, XMLNode,
@@ -26824,7 +26793,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],111:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],110:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDeclaration, XMLNode, isObject,
@@ -26866,7 +26835,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLNode":116}],112:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLNode":115}],111:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDocType, XMLNode, isObject,
@@ -26975,7 +26944,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLDTDAttList":107,"./XMLDTDElement":108,"./XMLDTDEntity":109,"./XMLDTDNotation":110,"./XMLNode":116}],113:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLDTDAttList":106,"./XMLDTDElement":107,"./XMLDTDEntity":108,"./XMLDTDNotation":109,"./XMLNode":115}],112:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDocument, XMLNode, XMLStringWriter, XMLStringifier, isPlainObject,
@@ -27025,7 +26994,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLNode":116,"./XMLStringWriter":120,"./XMLStringifier":121}],114:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLNode":115,"./XMLStringWriter":119,"./XMLStringifier":120}],113:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute, XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLDocumentCB, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStringWriter, XMLStringifier, XMLText, isFunction, isObject, isPlainObject, ref,
@@ -27429,7 +27398,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLAttribute":104,"./XMLCData":105,"./XMLComment":106,"./XMLDTDAttList":107,"./XMLDTDElement":108,"./XMLDTDEntity":109,"./XMLDTDNotation":110,"./XMLDeclaration":111,"./XMLDocType":112,"./XMLElement":115,"./XMLProcessingInstruction":117,"./XMLRaw":118,"./XMLStringWriter":120,"./XMLStringifier":121,"./XMLText":122}],115:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLAttribute":103,"./XMLCData":104,"./XMLComment":105,"./XMLDTDAttList":106,"./XMLDTDElement":107,"./XMLDTDEntity":108,"./XMLDTDNotation":109,"./XMLDeclaration":110,"./XMLDocType":111,"./XMLElement":114,"./XMLProcessingInstruction":116,"./XMLRaw":117,"./XMLStringWriter":119,"./XMLStringifier":120,"./XMLText":121}],114:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLAttribute, XMLElement, XMLNode, isFunction, isObject, ref,
@@ -27542,7 +27511,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLAttribute":104,"./XMLNode":116}],116:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLAttribute":103,"./XMLNode":115}],115:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDeclaration, XMLDocType, XMLElement, XMLNode, XMLProcessingInstruction, XMLRaw, XMLText, isEmpty, isFunction, isObject, ref,
@@ -27976,7 +27945,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLCData":105,"./XMLComment":106,"./XMLDeclaration":111,"./XMLDocType":112,"./XMLElement":115,"./XMLProcessingInstruction":117,"./XMLRaw":118,"./XMLText":122}],117:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLCData":104,"./XMLComment":105,"./XMLDeclaration":110,"./XMLDocType":111,"./XMLElement":114,"./XMLProcessingInstruction":116,"./XMLRaw":117,"./XMLText":121}],116:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLProcessingInstruction,
@@ -28013,7 +27982,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],118:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],117:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLRaw,
@@ -28047,7 +28016,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],119:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],118:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStreamWriter, XMLText, XMLWriterBase,
@@ -28328,7 +28297,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLCData":105,"./XMLComment":106,"./XMLDTDAttList":107,"./XMLDTDElement":108,"./XMLDTDEntity":109,"./XMLDTDNotation":110,"./XMLDeclaration":111,"./XMLDocType":112,"./XMLElement":115,"./XMLProcessingInstruction":117,"./XMLRaw":118,"./XMLText":122,"./XMLWriterBase":123}],120:[function(_dereq_,module,exports){
+},{"./XMLCData":104,"./XMLComment":105,"./XMLDTDAttList":106,"./XMLDTDElement":107,"./XMLDTDEntity":108,"./XMLDTDNotation":109,"./XMLDeclaration":110,"./XMLDocType":111,"./XMLElement":114,"./XMLProcessingInstruction":116,"./XMLRaw":117,"./XMLText":121,"./XMLWriterBase":122}],119:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLCData, XMLComment, XMLDTDAttList, XMLDTDElement, XMLDTDEntity, XMLDTDNotation, XMLDeclaration, XMLDocType, XMLElement, XMLProcessingInstruction, XMLRaw, XMLStringWriter, XMLText, XMLWriterBase,
@@ -28664,7 +28633,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLCData":105,"./XMLComment":106,"./XMLDTDAttList":107,"./XMLDTDElement":108,"./XMLDTDEntity":109,"./XMLDTDNotation":110,"./XMLDeclaration":111,"./XMLDocType":112,"./XMLElement":115,"./XMLProcessingInstruction":117,"./XMLRaw":118,"./XMLText":122,"./XMLWriterBase":123}],121:[function(_dereq_,module,exports){
+},{"./XMLCData":104,"./XMLComment":105,"./XMLDTDAttList":106,"./XMLDTDElement":107,"./XMLDTDEntity":108,"./XMLDTDNotation":109,"./XMLDeclaration":110,"./XMLDocType":111,"./XMLElement":114,"./XMLProcessingInstruction":116,"./XMLRaw":117,"./XMLText":121,"./XMLWriterBase":122}],120:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLStringifier,
@@ -28829,7 +28798,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{}],122:[function(_dereq_,module,exports){
+},{}],121:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLNode, XMLText,
@@ -28863,7 +28832,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./XMLNode":116}],123:[function(_dereq_,module,exports){
+},{"./XMLNode":115}],122:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLWriterBase,
@@ -28955,7 +28924,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{}],124:[function(_dereq_,module,exports){
+},{}],123:[function(_dereq_,module,exports){
 // Generated by CoffeeScript 1.12.7
 (function() {
   var XMLDocument, XMLDocumentCB, XMLStreamWriter, XMLStringWriter, assign, isFunction, ref;
@@ -29010,7 +28979,7 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this);
 
-},{"./Utility":103,"./XMLDocument":113,"./XMLDocumentCB":114,"./XMLStreamWriter":119,"./XMLStringWriter":120}],125:[function(_dereq_,module,exports){
+},{"./Utility":102,"./XMLDocument":112,"./XMLDocumentCB":113,"./XMLStreamWriter":118,"./XMLStringWriter":119}],124:[function(_dereq_,module,exports){
 function DOMParser(options){
 	this.options = options ||{locator:{}};
 	
@@ -29263,7 +29232,7 @@ function appendElement (hander,node) {
 	exports.DOMParser = DOMParser;
 //}
 
-},{"./dom":126,"./sax":127}],126:[function(_dereq_,module,exports){
+},{"./dom":125,"./sax":126}],125:[function(_dereq_,module,exports){
 /*
  * DOM Level 2
  * Object DOMException
@@ -30509,7 +30478,7 @@ try{
 	exports.XMLSerializer = XMLSerializer;
 //}
 
-},{}],127:[function(_dereq_,module,exports){
+},{}],126:[function(_dereq_,module,exports){
 //[4]   	NameStartChar	   ::=   	":" | [A-Z] | "_" | [a-z] | [#xC0-#xD6] | [#xD8-#xF6] | [#xF8-#x2FF] | [#x370-#x37D] | [#x37F-#x1FFF] | [#x200C-#x200D] | [#x2070-#x218F] | [#x2C00-#x2FEF] | [#x3001-#xD7FF] | [#xF900-#xFDCF] | [#xFDF0-#xFFFD] | [#x10000-#xEFFFF]
 //[4a]   	NameChar	   ::=   	NameStartChar | "-" | "." | [0-9] | #xB7 | [#x0300-#x036F] | [#x203F-#x2040]
 //[5]   	Name	   ::=   	NameStartChar (NameChar)*
