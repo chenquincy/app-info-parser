@@ -83,7 +83,7 @@ function (_Zip) {
 
             if (iconPath) {
               _this2.getEntry(iconPath).then(function (iconBuffer) {
-                apkInfo.icon = getBase64FromBuffer(iconBuffer);
+                apkInfo.icon = iconBuffer ? getBase64FromBuffer(iconBuffer) : null;
                 resolve(apkInfo);
               })["catch"](function (e) {
                 reject(e);
