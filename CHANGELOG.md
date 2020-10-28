@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="0.3.12"></a>
+## [0.3.12](https://github.com/chenquincy/app-info-parser/compare/v0.3.11...v0.3.12) (2020-10-28)
+
+
+
 <a name="0.3.11"></a>
 ### [0.3.11](https://github.com/chenquincy/app-info-parser/compare/v0.3.10...v0.3.11) (2020-07-31)
 
