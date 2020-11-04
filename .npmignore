@@ -2,6 +2,7 @@
 .eslintignore
 .eslintrc.js
 .gitignore
+.github
 
 packages/
 example/
