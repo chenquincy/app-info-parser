@@ -340,7 +340,7 @@ function (_Zip) {
 
       if (buffer) {
         var content = buffer.toString('utf-8');
-        var firstIndex = content.indexOf('<');
+        var firstIndex = content.indexOf('<?xml');
         var endIndex = content.indexOf('</plist>');
         content = content.slice(firstIndex, endIndex + 8);
 
