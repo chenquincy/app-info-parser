@@ -86,7 +86,9 @@ function (_Zip) {
                 apkInfo.icon = iconBuffer ? getBase64FromBuffer(iconBuffer) : null;
                 resolve(apkInfo);
               })["catch"](function (e) {
-                reject(e);
+                apkInfo.icon = null;
+                resolve(apkInfo);
+                console.warn('[Warning] failed to parse icon: ', e);
               });
             } else {
               apkInfo.icon = null;
@@ -294,7 +296,8 @@ function (_Zip) {
                 // Normal conversion in other cases
                 plistInfo.icon = iconBuffer ? getBase64FromBuffer(window.btoa(String.fromCharCode.apply(String, _toConsumableArray(iconBuffer)))) : null;
               } else {
-                throw err;
+                plistInfo.icon = null;
+                console.warn('[Warning] failed to parse icon: ', err);
               }
             }
 

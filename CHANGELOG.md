@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+<a name="1.0.0"></a>
+# [1.0.0](https://github.com/chenquincy/app-info-parser/compare/v0.3.13...v1.0.0) (2020-12-15)
+
+
+### Features
+
+* do not throw error when fail to parse icon ([c7065e2](https://github.com/chenquincy/app-info-parser/commit/c7065e2))
+
+
+### BREAKING CHANGES
+
+* it will not throw error when fail to parse icon
+
+
+
 <a name="0.3.13"></a>
 ## [0.3.13](https://github.com/chenquincy/app-info-parser/compare/v0.3.12...v0.3.13) (2020-11-04)
 
