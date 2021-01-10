@@ -58,6 +58,9 @@
                 <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ result['versionName'] || result['CFBundleShortVersionString'] }</span>
               </p>
             </div>
+            <pre>
+              <code>${JSON.stringify(result, null, 2)}</code>
+            </pre>
           `
             document.getElementById('result-list').appendChild(div)
           }).catch(e => {
