@@ -1,0 +1,64 @@
+{
+  "version": "0.1.0",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=10"
+  },
+  "scripts": {
+    "start": "tsdx watch",
+    "build": "tsdx build",
+    "test": "tsdx test",
+    "lint": "tsdx lint",
+    "prepare": "tsdx build",
+    "size": "size-limit",
+    "analyze": "size-limit --why"
+  },
+  "peerDependencies": {},
+  "husky": {
+    "hooks": {
+      "pre-commit": "tsdx lint"
+    }
+  },
+  "prettier": {
+    "printWidth": 80,
+    "semi": true,
+    "singleQuote": true,
+    "trailingComma": "es5"
+  },
+  "name": "app-info-parser",
+  "author": "lianghanxian",
+  "module": "dist/app-info-parser.esm.js",
+  "size-limit": [
+    {
+      "path": "dist/app-info-parser.cjs.production.min.js",
+      "limit": "10 KB"
+    },
+    {
+      "path": "dist/app-info-parser.esm.js",
+      "limit": "10 KB"
+    }
+  ],
+  "dependencies": {
+    "bplist-parser": "^0.2.0",
+    "bytebuffer": "^5.0.1",
+    "cgbi-to-png": "^1.0.7",
+    "isomorphic-unzip": "^1.1.5",
+    "plist": "^3.0.1"
+  },
+  "devDependencies": {
+    "@size-limit/preset-small-lib": "^4.9.1",
+    "@types/bytebuffer": "^5.0.42",
+    "@types/plist": "^3.0.2",
+    "husky": "^4.3.7",
+    "size-limit": "^4.9.1",
+    "tsdx": "^0.14.1",
+    "tslib": "^2.1.0",
+    "typescript": "^4.1.3"
+  }
+}
