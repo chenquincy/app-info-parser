@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "main": "dist/index.js",
   "typings": "dist/index.d.ts",
@@ -31,7 +31,7 @@
     "singleQuote": true,
     "trailingComma": "es5"
   },
-  "name": "app-info-parser",
+  "name": "@bytrace/app-info-parser",
   "author": "lianghanxian",
   "module": "dist/app-info-parser.esm.js",
   "size-limit": [

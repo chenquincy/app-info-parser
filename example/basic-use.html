@@ -31,12 +31,12 @@
     <div id="result-list">
     </div>
   </div>
-  <script type="module">
-    import AppInfoParser from '/dist/app-info-parser.esm.js'
+  <script src="/dist/appinfoparser.umd.development.js"></script>
+  <script>
     function fileSelect() {
       const files = document.getElementById('file-input').files
       try {
-        const parser = new AppInfoParser(files[0])
+        const parser = new AppInfoParser.default(files[0])
         parser.parse().then(result => {
           const div = document.createElement('div')
           div.innerHTML = `
