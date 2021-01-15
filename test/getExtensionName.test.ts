@@ -9,7 +9,7 @@ describe('Util getExtensionName', () => {
     expect(getExtensionName('abcd.e.f')).toEqual('f');
   });
 
-  it('File path', () => {
+  it('Has file path', () => {
     expect(getExtensionName('/a/b/c/d.e')).toEqual('e');
   });
 });

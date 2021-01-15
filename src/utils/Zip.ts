@@ -25,9 +25,7 @@ export abstract class Zip {
     reqexps: RegExp[],
     type = 'buffer'
   ): Promise<Record<string, Buffer>> {
-    const regexpStrings = reqexps.map(regex =>
-      decodeNullUnicode(regex).toString()
-    );
+    const regexpStrings = reqexps.map(regex => regex.toString().trim());
 
     return new Promise((resolve, reject) => {
       this.unzip.getBuffer(
@@ -41,7 +39,7 @@ export abstract class Zip {
   }
 
   getEntry(regex: RegExp | string, type = 'buffer'): Promise<Buffer> {
-    const regexString = decodeNullUnicode(regex).toString();
+    const regexString = regex.toString().trim();
 
     return new Promise((resolve, reject) => {
       this.unzip.getBuffer(
