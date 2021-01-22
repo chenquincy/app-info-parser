@@ -5,7 +5,7 @@ import { Zip } from './utils/Zip';
 
 const supportFileTypes = ['ipa', 'apk'];
 
-export type AppFile = File;
+export type AppFile = File | string;
 
 export default class AppInfoParser {
   public file: AppFile;
@@ -18,7 +18,9 @@ export default class AppInfoParser {
       );
     }
 
-    const fileExtension = getExtensionName(file.name);
+    const fileExtension = getExtensionName(
+      typeof file === 'string' ? file : file.name
+    );
 
     if (!supportFileTypes.includes(fileExtension)) {
       throw new Error('Unsupported file type, only support .ipa or .apk file.');

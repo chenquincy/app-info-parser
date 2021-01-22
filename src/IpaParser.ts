@@ -6,7 +6,7 @@ import { getBase64FromBuffer } from './utils/getBase64FromBuffer';
 import { isBrowser } from './utils/is';
 import { findIpaIconPath } from './utils/findIpaIconPath';
 
-const PLIST_NAME = new RegExp('payload/.+?.app/info.plist$', 'i');
+const PLIST_NAME = /payload\/.+?\.app\/info.plist$/;
 const PROVISION_NAME = /payload\/.+?\.app\/embedded.mobileprovision/;
 
 export class IpaParser extends Zip {

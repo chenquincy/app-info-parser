@@ -21,5 +21,5 @@ export function isPrimitive(o: any) {
 }
 
 export function isBrowser() {
-  return typeof window !== undefined || document !== undefined;
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
 }

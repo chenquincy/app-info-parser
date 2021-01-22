@@ -1,0 +1,8 @@
+*.log
+.DS_Store
+.github
+.vscode
+node_modules
+lib
+packages
+src
