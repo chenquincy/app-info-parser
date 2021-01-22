@@ -22,10 +22,15 @@ export abstract class Zip {
   abstract parse(): Promise<any>;
 
   getEntries(
-    reqexps: RegExp[],
+    regexps: RegExp[],
     type = 'buffer'
   ): Promise<Record<string, Buffer>> {
-    const regexpStrings = reqexps.map(regex => regex.toString().trim());
+    const regexpStrings = regexps.map(regex => {
+      if (typeof regex === 'string') {
+        return String(regex).trim();
+      }
+      return regex;
+    });
 
     return new Promise((resolve, reject) => {
       this.unzip.getBuffer(
