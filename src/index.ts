@@ -5,7 +5,7 @@ import { Zip } from './utils/Zip';
 
 export type AppFile = File | string;
 
-class AppInfoParser {
+export default class AppInfoParser {
   public file: AppFile;
   type: ExtensionNameEnum;
   parser: Zip;
@@ -16,9 +16,7 @@ class AppInfoParser {
         "Param miss: file(file's path in Node, instance of File or Blob in browser)."
       );
     }
-
     this.type = getExtensionName(typeof file === 'string' ? file : file.name);
-
     this.file = file;
 
     switch (this.type) {
