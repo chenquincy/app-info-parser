@@ -19,7 +19,7 @@ export abstract class Zip {
     this.unzip = new Unzip(this.file);
   }
 
-  abstract parse(): Promise<any>;
+  abstract parse(): Promise<unknown>;
 
   getEntries(
     regexps: RegExp[],
@@ -27,7 +27,7 @@ export abstract class Zip {
   ): Promise<Record<string, Buffer>> {
     const regexpStrings = regexps.map(regex => {
       if (typeof regex === 'string') {
-        return String(regex).trim();
+        return (regex as string).trim();
       }
       return regex;
     });
@@ -44,16 +44,13 @@ export abstract class Zip {
   }
 
   getEntry(regex: RegExp | string, type = 'buffer'): Promise<Buffer> {
-    const regexString = regex.toString().trim();
-
+    if (typeof regex === 'string') {
+      regex = regex.replace(/\u0000/g, '');
+    }
     return new Promise((resolve, reject) => {
-      this.unzip.getBuffer(
-        [regexString],
-        { type },
-        (err: any, buffers: Buffer) => {
-          err ? reject(err) : resolve(buffers);
-        }
-      );
+      this.unzip.getBuffer([regex], { type }, (err: any, buffers: any) => {
+        err ? reject(err) : resolve(buffers[String(regex)]);
+      });
     });
   }
 }

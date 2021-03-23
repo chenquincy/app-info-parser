@@ -374,7 +374,6 @@ and is supposed to end at offset ${end}. Ignoring the rest of the value.`);
     }
 
     this.debug && console.groupEnd();
-
     return typedValue;
   }
 

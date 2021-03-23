@@ -25,7 +25,7 @@ export interface Manifest {
   supportsGlTextures: any[];
   application: {
     theme: string;
-    label: string;
+    label: { value: string; locate: string }[];
     icon: { value: string }[];
     debuggable: boolean;
     allowBackup: boolean;
@@ -37,7 +37,7 @@ export interface Manifest {
     providers: any[];
     usesLibraries: any[];
   };
-  icon?: any;
+  icon: string | null;
 }
 
 export interface IntentFilterAction {
@@ -216,7 +216,7 @@ export class ManifestParser {
     });
   }
 
-  parse(): Manifest {
+  parse() {
     const document = this.xmlParser.parse();
     const manifest = this.collapseAttributes(document!);
 
@@ -279,6 +279,12 @@ export class ManifestParser {
           break;
       }
     });
+
+    if (typeof manifest.application.label === 'string') {
+      manifest.application.label = [
+        { value: manifest.application.label, locate: 'default' },
+      ];
+    }
 
     return manifest;
   }

@@ -6,10 +6,12 @@ import { getBase64FromBuffer } from './utils/getBase64FromBuffer';
 import { isBrowser } from './utils/is';
 import { findIpaIconPath } from './utils/findIpaIconPath';
 
+import { IpaInfoType } from './types';
+
 const PLIST_NAME = /payload\/.+?\.app\/info.plist$/;
 const PROVISION_NAME = /payload\/.+?\.app\/embedded.mobileprovision/;
 
-export class IpaParser extends Zip {
+export default class IpaParser extends Zip {
   /**
    * parser for parsing .ipa file
    * @param {String | File | Blob} file // file's path in Node, instance of File or Blob in Browser
@@ -21,10 +23,10 @@ export class IpaParser extends Zip {
     }
   }
 
-  parse() {
+  parse(): Promise<IpaInfoType> {
     const entries = [PLIST_NAME, PROVISION_NAME];
     const [PLIST_KEY, PROVISION_KEY] = entries.map(entry => entry.toString());
-    return new Promise((resolve, reject) => {
+    return new Promise<IpaInfoType>((resolve, reject) => {
       this.getEntries(entries)
         .then((buffers: any) => {
           if (!buffers[PLIST_NAME.toString()]) {

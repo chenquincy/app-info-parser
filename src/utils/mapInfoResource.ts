@@ -6,7 +6,7 @@ import { Manifest } from './xml-parser/ManifestParser';
  * @param {Object} apkInfo // json info parsed from .apk file
  * @param {Object} resourceMap // resourceMap
  */
-export function mapInfoResource(apkInfo: Manifest, resourceMap: any) {
+export function mapInfoResource(apkInfo: Manifest, resourceMap: any): Manifest {
   iteratorObj(apkInfo);
   return apkInfo;
   function iteratorObj(obj: any) {

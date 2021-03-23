@@ -5,7 +5,7 @@ import { Manifest } from './xml-parser/ManifestParser';
  * @param info // json info parsed from .apk file
  */
 export function findApkIconPath(info: Manifest) {
-  if (!info.application.icon.length) {
+  if (!info.application.icon?.length) {
     return '';
   }
   const rulesMap = {
@@ -17,7 +17,6 @@ export function findApkIconPath(info: Manifest) {
   };
   const resultMap = {} as Record<string, any>;
   const maxDpiIcon = { dpi: 120, icon: '' };
-
   for (const i in rulesMap) {
     if (Object.prototype.hasOwnProperty.call(rulesMap, i)) {
       const element = rulesMap[i as keyof typeof rulesMap];

@@ -27,22 +27,6 @@ export interface ManifestResourceConfig {
 }
 
 export class ResourceFinder {
-  /**
-   * Same to C# BinaryReader.readBytes
-   *
-   * @param bb ByteBuffer
-   * @param len length
-   * @returns {Buffer}
-   */
-  static readBytes(bb: ByteBuffer, len: number): ByteBuffer {
-    var uint8Array = new Uint8Array(len);
-    for (var i = 0; i < len; i++) {
-      uint8Array[i] = bb.readUint8();
-    }
-
-    return ByteBuffer.wrap(uint8Array, 'binary', true);
-  }
-
   valueStringPool: string[];
   typeStringPool: string[];
   keyStringPool: string[];
@@ -55,7 +39,6 @@ export class ResourceFinder {
     [n: number]: any;
     [x: string]: any;
   };
-
   constructor() {
     this.valueStringPool = [];
     this.typeStringPool = [];
@@ -68,6 +51,22 @@ export class ResourceFinder {
   }
 
   /**
+   * Same to C# BinaryReader.readBytes
+   *
+   * @param bb ByteBuffer
+   * @param len length
+   * @returns {Buffer}
+   */
+  static readBytes(bb: ByteBuffer, len: number): ByteBuffer {
+    const uint8Array = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      uint8Array[i] = bb.readUint8();
+    }
+
+    return ByteBuffer.wrap(uint8Array, 'binary', true);
+  }
+
+  /**
    *
    * @param {ByteBuffer} bb
    * @return {Map<String, Set<String>>}
@@ -77,20 +76,20 @@ export class ResourceFinder {
 
     const type = bb.readShort();
     const headerSize = bb.readShort();
-    // size
-    bb.readInt();
+    const size = bb.readInt();
     const packageCount = bb.readInt();
+    let buffer;
+    let bb2;
 
     if (type !== RES_TABLE_TYPE) {
       throw new Error('No RES_TABLE_TYPE found!');
     }
 
-    if (type !== bb.limit) {
+    if (size !== bb.limit) {
       throw new Error(
         'The buffer size not matches to the resource table size.'
       );
     }
-
     bb.offset = headerSize;
 
     let realStringPoolCount = 0;
@@ -116,11 +115,11 @@ export class ResourceFinder {
             console.log('Processing the string pool ...');
           }
 
-          const buffer = new ByteBuffer(s);
+          buffer = new ByteBuffer(s);
           bb.offset = pos;
-          bb.prependTo(buffer as ByteBuffer);
+          bb.prependTo(buffer);
 
-          const bb2 = ByteBuffer.wrap(buffer as ByteBuffer, 'binary', true);
+          bb2 = ByteBuffer.wrap(buffer, 'binary', true);
 
           bb2.LE();
           this.valueStringPool = this.processStringPool(bb2);
@@ -136,7 +135,7 @@ export class ResourceFinder {
         bb.offset = pos;
         bb.prependTo(buffer as ByteBuffer);
 
-        const bb2 = ByteBuffer.wrap(buffer as ByteBuffer, 'binary', true);
+        bb2 = ByteBuffer.wrap(buffer, 'binary', true);
         bb2.LE();
         this.processPackage(bb2);
 
@@ -144,9 +143,7 @@ export class ResourceFinder {
       } else {
         throw new Error('Unsupported type');
       }
-
       bb.offset = pos + s;
-
       if (!bb.remaining()) {
         break;
       }
@@ -155,7 +152,6 @@ export class ResourceFinder {
     if (realStringPoolCount !== 1) {
       throw new Error('More than 1 string pool found!');
     }
-
     if (realPackageCount !== packageCount) {
       throw new Error('Real package count not equals the declared count.');
     }
@@ -219,6 +215,8 @@ export class ResourceFinder {
 
     bb.offset = keyStrings + keySize;
 
+    let bb2;
+
     while (true) {
       const pos = bb.offset;
       let t: number, s: number;
@@ -227,17 +225,17 @@ export class ResourceFinder {
         // headerSize
         bb.readShort();
         s = bb.readInt();
-      } catch (error) {
+      } catch (e) {
         break;
       }
 
       if (t === RES_TABLE_TYPE_SPEC_TYPE) {
         bb.offset = pos;
-        const bb2 = ResourceFinder.readBytes(bb, s);
+        bb2 = ResourceFinder.readBytes(bb, s);
         this.processTypeSpec(bb2);
       } else if (t === RES_TABLE_TYPE_TYPE) {
         bb.offset = pos;
-        const bb2 = ResourceFinder.readBytes(bb, s);
+        bb2 = ResourceFinder.readBytes(bb, s);
         this.processType(bb2);
       }
 
@@ -251,6 +249,39 @@ export class ResourceFinder {
         break;
       }
     }
+  }
+
+  processConfig(bb: ByteBuffer): ManifestResourceConfig {
+    const config: ManifestResourceConfig = {
+      language: '',
+      region: '',
+      locate: 'default',
+    };
+
+    // mcc
+    bb.readShort();
+    // mnc
+    bb.readShort();
+    const configLanguage = [bb.readByte(), bb.readByte()];
+    const configRegion = [bb.readByte(), bb.readByte()];
+
+    if (configLanguage.every(Boolean)) {
+      config.language = String.fromCharCode(...configLanguage);
+    }
+
+    if (configRegion.every(Boolean)) {
+      config.region = String.fromCharCode(...configRegion);
+    }
+
+    if (config.language) {
+      config.locate = config.language;
+    }
+
+    if (config.region) {
+      config.region += `-r${config.region}`;
+    }
+
+    return config;
   }
 
   private processType(bb: ByteBuffer) {
@@ -270,8 +301,8 @@ export class ResourceFinder {
     const refKeys: any = {};
 
     const configSize = bb.readInt();
-    const bbConfig = ResourceFinder.readBytes(bb, configSize);
-    const resConfig = this.processConfig(bbConfig);
+    const configBuffer = ResourceFinder.readBytes(bb, configSize);
+    const resConfig = this.processConfig(configBuffer);
 
     // Skip the config data
     bb.offset = headerSize;
@@ -281,14 +312,14 @@ export class ResourceFinder {
     }
 
     // Start to get entry indices
-    let entryIndices = [];
+    let entryIndices = new Array(entryCount);
     for (var i = 0; i < entryCount; ++i) {
       entryIndices[i] = bb.readInt();
     }
 
     // Get entries
     for (let i = 0; i < entryCount; i++) {
-      if (entryIndices[i] !== -1) {
+      if (entryIndices[i] === -1) {
         continue;
       }
 
@@ -303,7 +334,8 @@ export class ResourceFinder {
       } catch (error) {
         break;
       }
-
+      let valueDataType: number;
+      let valueData: number;
       // Get the value (simple) or map (complex)
       const FLAG_COMPLEX = 0x0001;
       if ((entryFlag & FLAG_COMPLEX) === 0) {
@@ -311,8 +343,8 @@ export class ResourceFinder {
         bb.readShort();
         // valueRes0
         bb.readByte();
-        const valueDataType = bb.readByte();
-        const valueData = bb.readInt();
+        valueDataType = bb.readByte();
+        valueData = bb.readInt();
 
         const idStr = Number(resourceId).toString(16);
         const keyStr = this.keyStringPool[entryKey];
@@ -327,7 +359,6 @@ export class ResourceFinder {
 
         const key = parseInt(idStr, 16);
         let entryArr = this.entryMap[key] || [];
-
         entryArr.push(keyStr);
 
         this.entryMap[key] = entryArr;
@@ -341,7 +372,7 @@ export class ResourceFinder {
         } else if (valueDataType === TYPE_REFERENCE) {
           refKeys[idStr] = valueData;
         } else {
-          data = valueData.toString();
+          data = String(valueData);
           if (DEBUG) {
             console.log(`, data: ${data}`);
           }
@@ -377,19 +408,16 @@ export class ResourceFinder {
       }
     }
 
-    for (const key in refKeys) {
-      if (Object.prototype.hasOwnProperty.call(refKeys, key)) {
-        const values = this.responseMap[
-          `@${Number(refKeys[key])
+    for (const refKey in refKeys) {
+      const values = this.responseMap[
+        '@' +
+          Number(refKeys[refKey])
             .toString(16)
-            .toUpperCase()}`
-        ];
-        if (values && Object.keys(values).length < 1000) {
-          for (const value in values) {
-            if (Object.prototype.hasOwnProperty.call(values, value)) {
-              this.putIntoMap(`@${key}`, value, resConfig);
-            }
-          }
+            .toUpperCase()
+      ];
+      if (values && Object.keys(values).length < 1000) {
+        for (const value in values) {
+          this.putIntoMap('@' + refKey, value, resConfig);
         }
       }
     }
@@ -419,9 +447,9 @@ export class ResourceFinder {
       offsets[i] = bb.readInt();
     }
 
-    const strings: string[] = [];
+    const strings = new Array<string>(stringCount);
 
-    for (let i = 0; i < stringCount; i++) {
+    for (let i = 0; i < stringCount; ++i) {
       const pos = stringsStart + offsets[i];
       bb.offset = pos;
 
@@ -442,7 +470,7 @@ export class ResourceFinder {
         if (u8len > 0) {
           buffer = ResourceFinder.readBytes(bb, u8len);
           try {
-            strings[i] = ByteBuffer.wrap(buffer, 'utf8', true).toString();
+            strings[i] = ByteBuffer.wrap(buffer, 'utf8', true).toString('utf8');
           } catch (e) {
             if (DEBUG) {
               console.error(e);
@@ -506,39 +534,6 @@ export class ResourceFinder {
     for (let i = 0; i < entryCount; ++i) {
       flags[i] = bb.readInt();
     }
-  }
-
-  processConfig(bb: ByteBuffer): ManifestResourceConfig {
-    const config: ManifestResourceConfig = {
-      language: '',
-      region: '',
-      locate: 'default',
-    };
-
-    // mcc
-    bb.readShort();
-    // mnc
-    bb.readShort();
-    const configLanguage = [bb.readByte(), bb.readByte()];
-    const configRegion = [bb.readByte(), bb.readByte()];
-
-    if (configLanguage.every(byte => byte !== 0)) {
-      config.language = String.fromCharCode(...configLanguage);
-    }
-
-    if (configRegion.every(byte => byte !== 0)) {
-      config.region = String.fromCharCode(...configRegion);
-    }
-
-    if (config.language) {
-      config.locate = config.language;
-    }
-
-    if (config.region) {
-      config.region += `-r${config.region}`;
-    }
-
-    return config;
   }
 
   putIntoMap(resId: string, value: string, config: ManifestResourceConfig) {
