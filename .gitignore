@@ -1,6 +1,5 @@
-node_modules/
-packages/
-src/
-package-lock.json
-yarn.lock
-yarn-error.log
+*.log
+.DS_Store
+node_modules
+dist
+packages

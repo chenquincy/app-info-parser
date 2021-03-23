@@ -31,12 +31,12 @@
     <div id="result-list">
     </div>
   </div>
-  <script src="../dist/app-info-parser.js"></script>
+  <script src="/dist/appinfoparser.umd.development.js"></script>
   <script>
     function fileSelect() {
       const files = document.getElementById('file-input').files
       try {
-        const parser = new AppInfoParser(files[0])
+        const parser = new AppInfoParser.default(files[0])
         parser.parse().then(result => {
           const div = document.createElement('div')
           div.innerHTML = `
@@ -58,6 +58,9 @@
                 <span style="width: 0; flex: 1; overflow-wrap: break-word; word-wrap: break-word;">${ result['versionName'] || result['CFBundleShortVersionString'] }</span>
               </p>
             </div>
+            <pre>
+              <code>${JSON.stringify(result, null, 2)}</code>
+            </pre>
           `
             document.getElementById('result-list').appendChild(div)
           }).catch(e => {

@@ -1,27 +1,49 @@
 {
-  "name": "app-info-parser",
-  "version": "1.0.0",
-  "description": "Exact info from apk or ipa file.",
-  "main": "./src/index.js",
-  "scripts": {
-    "test": "node ./example/node.js",
-    "build": "rimraf src/* && babel lib -d src",
-    "build:browser": "rimraf dist/* && browserify lib/index.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
-    "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\"",
-    "dist": "npm run build:browser && npm run minify"
-  },
-  "browser": {
-    "./src/bplist-parser/index.js": "./src/bplist-parser/browser.js"
-  },
-  "keywords": [
-    "ipa",
-    "apk",
-    "parser",
-    "browser",
-    "node"
-  ],
-  "author": "Quincy Chen <mail@chenquincy.cn>",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
+  "main": "dist/index.js",
+  "typings": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=10"
+  },
+  "scripts": {
+    "start": "tsdx watch",
+    "build": "tsdx build",
+    "test": "tsdx test",
+    "lint": "tsdx lint",
+    "prepare": "tsdx build",
+    "size": "size-limit",
+    "analyze": "size-limit --why"
+  },
+  "peerDependencies": {},
+  "husky": {
+    "hooks": {
+      "pre-commit": "tsdx lint"
+    }
+  },
+  "prettier": {
+    "printWidth": 80,
+    "semi": true,
+    "singleQuote": true,
+    "trailingComma": "es5"
+  },
+  "name": "@bytrace/app-info-parser",
+  "author": "lianghanxian",
+  "module": "dist/app-info-parser.esm.js",
+  "size-limit": [
+    {
+      "path": "dist/app-info-parser.cjs.production.min.js",
+      "limit": "10 KB"
+    },
+    {
+      "path": "dist/app-info-parser.esm.js",
+      "limit": "10 KB"
+    }
+  ],
   "dependencies": {
     "bplist-parser": "^0.2.0",
     "bytebuffer": "^5.0.1",
@@ -30,20 +52,13 @@
     "plist": "^3.0.1"
   },
   "devDependencies": {
-    "@babel/cli": "^7.4.4",
-    "@babel/core": "^7.4.4",
-    "@babel/preset-env": "^7.4.4",
-    "babelify": "^10.0.0",
-    "browserify": "^16.2.3",
-    "derequire": "^2.0.6",
-    "eslint": "^5.8.0",
-    "eslint-config-standard": "^12.0.0",
-    "eslint-plugin-import": "^2.14.0",
-    "eslint-plugin-node": "^8.0.0",
-    "eslint-plugin-promise": "^4.0.1",
-    "eslint-plugin-standard": "^4.0.0",
-    "exorcist": "^1.0.1",
-    "rimraf": "^2.6.2",
-    "uglify-es": "^3.3.9"
+    "@size-limit/preset-small-lib": "^4.9.1",
+    "@types/bytebuffer": "^5.0.42",
+    "@types/plist": "^3.0.2",
+    "husky": "^4.3.7",
+    "size-limit": "^4.9.1",
+    "tsdx": "^0.14.1",
+    "tslib": "^2.1.0",
+    "typescript": "^4.1.3"
   }
 }
