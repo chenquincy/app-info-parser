@@ -1,6 +1,6 @@
 {
   "name": "app-info-parser",
-  "version": "1.0.0",
+  "version": "1.0.1-alpha.0",
   "description": "Exact info from apk or ipa file.",
   "main": "./src/index.js",
   "scripts": {
@@ -8,7 +8,12 @@
     "build": "rimraf src/* && babel lib -d src",
     "build:browser": "rimraf dist/* && browserify lib/index.js -t [ babelify ] -s AppInfoParser -d | exorcist ./dist/app-info-parser.js.map | derequire > dist/app-info-parser.js",
     "minify": "uglifyjs ./dist/app-info-parser.js -o ./dist/app-info-parser.min.js -c -m --source-map \"url='./dist/app-info-parser.mini.js.map'\"",
-    "dist": "npm run build:browser && npm run minify"
+    "dist": "npm run build:browser && npm run minify",
+    "release": "standard-version",
+    "release:major": "yarn release -- --release-as major",
+    "release:feat": "yarn release -- --release-as minor",
+    "release:fix": "yarn release -- --release-as patch",
+    "release:test": "yarn release --prerelease alpha"
   },
   "browser": {
     "./src/bplist-parser/index.js": "./src/bplist-parser/browser.js"
