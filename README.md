@@ -16,7 +16,20 @@
   | :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: | :----------------------------------------------------------: |
   |                           latest ✅                           |                           latest ✅                           |                           latest ✅                           |                           latest ✅                           |                              ❌                               |
 
+- npx
 
+## Without Installation
+
+You can use app-info-parser by npx, if you don't want to install it. Run this command in your terminal:
+
+``` shell
+npx app-info-parser -f <file-path> -o <output-path>
+```
+
+| argument | type   | description                                                  |
+| -------- | ------ | ------------------------------------------------------------ |
+| -f       | string | The path of file that you want to parse.                     |
+| -o       | string | The output path that you want to save the parse result. Default is "./result.json" |
 
 ## Installation
 
@@ -25,8 +38,6 @@ npm install app-info-parser
 # or yarn
 yarn add app-info-parser
 ```
-
-
 
 ## Getting started
 

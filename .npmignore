@@ -10,3 +10,4 @@ node_modules/
 lib/
 
 package-lock.json
+test_packages/
