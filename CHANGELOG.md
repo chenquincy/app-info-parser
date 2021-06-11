@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.1](https://github.com/chenquincy/app-info-parser/compare/v1.1.0...v1.1.1) (2021-06-11)
+
+
+### Bug Fixes
+
+* **$npx:** dependency error ([347a677](https://github.com/chenquincy/app-info-parser/commit/347a677e5b083ba505a9599054f4ab7927e3aeeb)), closes [#62](https://github.com/chenquincy/app-info-parser/issues/62)
+
 ## [1.1.0](https://github.com/chenquincy/app-info-parser/compare/v1.0.1-alpha.1...v1.1.0) (2021-05-08)
 
 
