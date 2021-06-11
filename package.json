@@ -31,6 +31,7 @@
   "dependencies": {
     "bplist-parser": "^0.2.0",
     "bytebuffer": "^5.0.1",
+    "commander": "^7.2.0",
     "cgbi-to-png": "^1.0.7",
     "isomorphic-unzip": "^1.1.5",
     "plist": "^3.0.1"
@@ -41,7 +42,6 @@
     "@babel/preset-env": "^7.4.4",
     "babelify": "^10.0.0",
     "browserify": "^16.2.3",
-    "commander": "^7.2.0",
     "derequire": "^2.0.6",
     "eslint": "^5.8.0",
     "eslint-config-standard": "^12.0.0",
