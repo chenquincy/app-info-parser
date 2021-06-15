@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.2](https://github.com/chenquincy/app-info-parser/compare/v1.1.1...v1.1.2) (2021-06-15)
+
+
+### Bug Fixes
+
+* **ApkParser:** versionName special chars filter ([de6db75](https://github.com/chenquincy/app-info-parser/commit/de6db75493abeed15ded2fe91328a2ea7a3ea5f4)), closes [#61](https://github.com/chenquincy/app-info-parser/issues/61)
+
 ### [1.1.1](https://github.com/chenquincy/app-info-parser/compare/v1.1.0...v1.1.1) (2021-06-11)
 
 
