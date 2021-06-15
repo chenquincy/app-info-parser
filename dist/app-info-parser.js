@@ -1641,6 +1641,11 @@ var BinaryXmlParser = /*#__PURE__*/function () {
       attr.nodeName = attr.name = this.strings[nameRef];
 
       if (valueRef > 0) {
+        // some apk have versionName with special characters
+        if (attr.name === 'versionName') {
+          this.strings[valueRef] = this.strings[valueRef].replace(/[^\d\w-.]/g, '');
+        }
+
         attr.value = this.strings[valueRef];
       }
 
