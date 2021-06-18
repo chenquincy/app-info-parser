@@ -31,10 +31,11 @@
   "dependencies": {
     "bplist-parser": "^0.2.0",
     "bytebuffer": "^5.0.1",
-    "commander": "^7.2.0",
     "cgbi-to-png": "^1.0.7",
+    "commander": "^7.2.0",
     "isomorphic-unzip": "^1.1.5",
-    "plist": "^3.0.1"
+    "plist": "^3.0.1",
+    "protobufjs": "^6.11.2"
   },
   "devDependencies": {
     "@babel/cli": "^7.4.4",
