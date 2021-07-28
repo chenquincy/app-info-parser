@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.3](https://github.com/dk-plus/app-info-parser/compare/v1.1.2...v1.1.3) (2021-07-28)
+
+
+### Bug Fixes
+
+* add attribute uses-permisson-sdk-23 ([4e6af71](https://github.com/dk-plus/app-info-parser/commit/4e6af7189ea843bd475fc808b7e126cee9011196))
+
 ### [1.1.2](https://github.com/chenquincy/app-info-parser/compare/v1.1.1...v1.1.2) (2021-06-15)
 
 
