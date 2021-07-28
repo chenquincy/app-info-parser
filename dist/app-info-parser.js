@@ -212,7 +212,7 @@ function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread n
 
 function _unsupportedIterableToArray(o, minLen) { if (!o) return; if (typeof o === "string") return _arrayLikeToArray(o, minLen); var n = Object.prototype.toString.call(o).slice(8, -1); if (n === "Object" && o.constructor) n = o.constructor.name; if (n === "Map" || n === "Set") return Array.from(o); if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return _arrayLikeToArray(o, minLen); }
 
-function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && Symbol.iterator in Object(iter)) return Array.from(iter); }
+function _iterableToArray(iter) { if (typeof Symbol !== "undefined" && iter[Symbol.iterator] != null || iter["@@iterator"] != null) return Array.from(iter); }
 
 function _arrayWithoutHoles(arr) { if (Array.isArray(arr)) return _arrayLikeToArray(arr); }
 
@@ -1509,9 +1509,7 @@ var BinaryXmlParser = /*#__PURE__*/function () {
     }
   }, {
     key: "readXmlNamespaceStart",
-    value: function readXmlNamespaceStart()
-    /* header */
-    {
+    value: function readXmlNamespaceStart() {
       this.debug && console.group('readXmlNamespaceStart');
       /* const line = */
 
@@ -1535,9 +1533,7 @@ var BinaryXmlParser = /*#__PURE__*/function () {
     }
   }, {
     key: "readXmlNamespaceEnd",
-    value: function readXmlNamespaceEnd()
-    /* header */
-    {
+    value: function readXmlNamespaceEnd() {
       this.debug && console.group('readXmlNamespaceEnd');
       /* const line = */
 
@@ -1561,9 +1557,7 @@ var BinaryXmlParser = /*#__PURE__*/function () {
     }
   }, {
     key: "readXmlElementStart",
-    value: function readXmlElementStart()
-    /* header */
-    {
+    value: function readXmlElementStart() {
       this.debug && console.group('readXmlElementStart');
       var node = {
         namespaceURI: null,
@@ -1655,9 +1649,7 @@ var BinaryXmlParser = /*#__PURE__*/function () {
     }
   }, {
     key: "readXmlElementEnd",
-    value: function readXmlElementEnd()
-    /* header */
-    {
+    value: function readXmlElementEnd() {
       this.debug && console.group('readXmlCData');
       /* const line = */
 
@@ -1678,9 +1670,7 @@ var BinaryXmlParser = /*#__PURE__*/function () {
     }
   }, {
     key: "readXmlCData",
-    value: function readXmlCData()
-    /* header */
-    {
+    value: function readXmlCData() {
       this.debug && console.group('readXmlCData');
       var cdata = {
         namespaceURI: null,
@@ -1995,6 +1985,7 @@ var ManifestParser = /*#__PURE__*/function () {
       var document = this.xmlParser.parse();
       var manifest = this.collapseAttributes(document);
       manifest.usesPermissions = [];
+      manifest.usesPermissionsSDK23 = [];
       manifest.permissions = [];
       manifest.permissionTrees = [];
       manifest.permissionGroups = [];
@@ -2010,6 +2001,10 @@ var ManifestParser = /*#__PURE__*/function () {
         switch (element.nodeName) {
           case 'uses-permission':
             manifest.usesPermissions.push(_this3.collapseAttributes(element));
+            break;
+
+          case 'uses-permission-sdk-23':
+            manifest.usesPermissionsSDK23.push(_this3.collapseAttributes(element));
             break;
 
           case 'permission':
