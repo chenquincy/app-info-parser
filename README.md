@@ -4,8 +4,6 @@
 
 ![](https://img.shields.io/npm/v/app-info-parser.svg) ![](https://img.shields.io/npm/dt/app-info-parser.svg) ![](https://img.shields.io/badge/language-javascript-yellow.svg)
 
-
-
 ## Support
 
 * Node ✅
@@ -18,7 +16,17 @@
 
 - npx
 
-## Without Installation
+## Installation
+
+``` shell
+npm install app-info-parser
+# or yarn
+yarn add app-info-parser
+```
+
+## Getting started
+
+### NPX Use
 
 You can use app-info-parser by npx, if you don't want to install it. Run this command in your terminal:
 
@@ -30,16 +38,6 @@ npx app-info-parser -f <file-path> -o <output-path>
 | -------- | ------ | ------------------------------------------------------------ |
 | -f       | string | The path of file that you want to parse.                     |
 | -o       | string | The output path that you want to save the parse result. Default is "./result.json" |
-
-## Installation
-
-``` shell
-npm install app-info-parser
-# or yarn
-yarn add app-info-parser
-```
-
-## Getting started
 
 ### NPM Use
 
@@ -54,15 +52,15 @@ parser.parse().then(result => {
 })
 ```
 
-### Basic Use
+### CDN Use
 
 ``` html
 <input type="file" name="file" id="file" onchange="fileSelect()">
-<script src="/dist/app-info-parser.js"></script>
+<script src="//unpkg.com/browse/app-info-parser/dist/app-info-parser.min.js"></script>
 <script>
 function fileSelect () {
   const files = document.getElementById('file').files
-  const parser = new AppInfoParser(files[0])
+  const parser = new window.AppInfoParser(files[0])
   parser.parse().then(result => {
     console.log('app info ----> ', result)
     console.log('icon base64 ----> ', result.icon)
@@ -103,8 +101,6 @@ parser.parse().then(result => {
 })
 ```
 
-
-
 ## API Referrer
 
 ### AppInfoParser | ApkParser | IpaParser
@@ -112,8 +108,6 @@ parser.parse().then(result => {
 * `constructor(file)`
   * `file`   Blob or File in browser, Path in Node
 * `parse: () => Promise<Object>`   A function return a promise, which resolving the parse result
-
-
 
 ## Buy Me A Coffee
 
@@ -131,8 +125,6 @@ Open source is not easy, you can  buy me a coffee. *Note your name or github id 
 		</td>
 	</tr>
 </table>
-
-
 
 ## Donation List
 
@@ -158,10 +150,15 @@ Open source is not easy, you can  buy me a coffee. *Note your name or github id 
 
 MIT
 
-
-
 ## Resources
 
 * [Changelog](https://github.com/chenquincy/app-info-parser/blob/master/CHANGELOG.md)
 
+## FAQ
+
+### Build/Parse error with vite？
+
+See this [issue](https://github.com/vitejs/vite/issues/2985) of vite, vite is not going support node global builtins and node specific api's on the client. Some of app-info-parser's deps didn't support browser env, most of them without maintain, so it can't be resolved.
+
+Just use app-info-parser by CDN using(import by script element), don't use it with module import in vite.
 
