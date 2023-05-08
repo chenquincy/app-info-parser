@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.5](https://github.com/chenquincy/app-info-parser/compare/v1.1.4...v1.1.5) (2023-05-08)
+
+
+### Bug Fixes
+
+* **ipa:** match shorter path of info.plist ([e74fa87](https://github.com/chenquincy/app-info-parser/commit/e74fa87590f4d16e8a0f162f085b8e2308089868)), closes [#86](https://github.com/chenquincy/app-info-parser/issues/86)
+
 ### [1.1.4](https://github.com/chenquincy/app-info-parser/compare/v1.1.2...v1.1.4) (2022-08-08)
 
 
